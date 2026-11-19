@@ -1,6 +1,6 @@
 # tvOS, watchOS and visionOS: Linux builds against Xcode 27.2
 
-Date: 2026-11-18. Linux: x86_64 Arch, Swift 6.4.2, xtool `x86sim/xtool@8aa6948`
+Date: 2026-11-18. Linux: x86_64 Arch, Swift 6.4.2, xtool `x86sim/xtool@2c545ff`
 (branch `omarchy-platforms`), SDK built by that xtool from an Xcode 27.2 (27B52)
 `Xcode.app`, stamp `epoch=5,darwinTools=1.1.0,oam=1.4.1`.
 Reference: Xcode 27.2 on macOS 27.0 (26A428), same source, `xcodebuild -configuration
