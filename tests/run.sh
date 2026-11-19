@@ -70,6 +70,9 @@ bash tests/actool-tvos-flags/run.sh || fail=1
 echo "== tests/actool-tvos-brandassets/run.sh"
 bash tests/actool-tvos-brandassets/run.sh || fail=1
 
+echo "== tests/simulators/run.sh"
+bash tests/simulators/run.sh || fail=1
+
 echo "== tests/flutter-dart-symbols/run.sh"
 bash tests/flutter-dart-symbols/run.sh || fail=1
 

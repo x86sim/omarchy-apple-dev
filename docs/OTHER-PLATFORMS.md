@@ -10,6 +10,7 @@ iPhoneOS; an SDK built before this (stamp `epoch=4`) is rebuilt by the installer
 | Apple TV | `arm64-apple-tvos` | `Release-appletvos` |
 | Apple Watch | `arm64_32-apple-watchos` | universal arm64_32 + arm64, like Xcode; `XTOOL_WATCHOS_ARM64=0` keeps arm64_32 only |
 | Vision Pro | `arm64-apple-xros` | `Release-xros` |
+| Simulators | `arm64-apple-{ios,tvos,watchos,xros}-simulator` | for Xcode's simulators or x86Sim (`tests/simulators/run.sh`) |
 
 Declare the platform in `Package.swift` and build with its triple:
 
@@ -71,5 +72,4 @@ need the developer disk image, which `mounter auto-mount` could not mount on tvO
 (`cryptexd ... invalid asset: ginf`).
 
 Not done yet: installing on a Vision Pro (pairs over the network like the Apple TV) and on a
-watch (through its paired iPhone), watch apps embedded in an
-iPhone app, simulators for these platforms, and no-Xcode mode.
+watch (through its paired iPhone), building a watch app embedded in an iPhone app (signing one works), and no-Xcode mode.

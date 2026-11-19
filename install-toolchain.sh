@@ -115,10 +115,10 @@ fetch_commit() { # repo sha dir
 # tvOS development profiles.
 # Built from source with its Swift runtime libraries next to it ($ORIGIN only).
 XTOOL_REPO=https://github.com/x86sim/xtool
-XTOOL_SHA=b95764553bd23ea05e166d2cbdabcf7fcdee4659
+XTOOL_SHA=ff3d7cbe046ab6e78825f2e6864fb9aef8c9e25e
 # The SDK stamp that pin writes (SDKBuilder.currentSDKVersion: epoch, darwin-tools and OpenAppleMacros
 # versions). Change it together with XTOOL_SHA; tests/sdk-state/check.sh compares it with the pinned source.
-XTOOL_SDK_VERSION="epoch=5,darwinTools=1.1.0-x86sim.2,oam=1.4.1"
+XTOOL_SDK_VERSION="epoch=6,darwinTools=1.1.0-x86sim.2,oam=1.4.1"
 install_xtool() {
   local src="$HOME/.cache/omarchy-apple-dev/xtool-$XTOOL_SHA"
   local dest="$HOME/.local/lib/omarchy-apple-dev/xtool-$XTOOL_SHA"
@@ -189,11 +189,11 @@ install_darwin_tools() {
   install -m644 "$REPO_DIR/tools/nibarchive.py" "$REPO_DIR/tools/keyorder.py" "$macbin/"
   install -m755 "$REPO_DIR/tools/momc" "$macbin/momc"
   install -m644 "$REPO_DIR/tools/xcstrings_symbols.py" "$macbin/xcstrings_symbols.py"
-  # tvOS, watchOS and visionOS builds (--triple arm64-apple-tvos, arm64_32-apple-watchos,
-  # arm64-apple-xros) look in their own platform's Developer/usr/bin. The SDK has
+  # tvOS, watchOS, visionOS and simulator builds (--triple arm64-apple-tvos, arm64_32-apple-watchos,
+  # arm64-apple-xros, *-simulator) look in their own platform's Developer/usr/bin. The SDK has
   # these platforms only when it was built from an Xcode that ships them.
   local p pbin
-  for p in AppleTVOS WatchOS XROS; do
+  for p in AppleTVOS WatchOS XROS iPhoneSimulator AppleTVSimulator WatchSimulator XRSimulator; do
     [ -d "$DARWIN_SDK_BUNDLE/Developer/Platforms/$p.platform" ] || continue
     pbin="$DARWIN_SDK_BUNDLE/Developer/Platforms/$p.platform/Developer/usr/bin"
     mkdir -p "$pbin"
@@ -206,7 +206,8 @@ install_darwin_tools() {
   python3 - "$DARWIN_SDK_BUNDLE" <<'PY'
 import json, os, plistlib, sys
 bundle = sys.argv[1]
-PLATFORMS = ("iPhoneOS.platform", "MacOSX.platform", "AppleTVOS.platform", "WatchOS.platform", "XROS.platform")
+PLATFORMS = ("iPhoneOS.platform", "MacOSX.platform", "AppleTVOS.platform", "WatchOS.platform", "XROS.platform",
+             "iPhoneSimulator.platform", "AppleTVSimulator.platform", "WatchSimulator.platform", "XRSimulator.platform")
 for platform_name in PLATFORMS:
     platform = os.path.join(bundle, "Developer/Platforms", platform_name, "Info.plist")
     if not os.path.isfile(platform):

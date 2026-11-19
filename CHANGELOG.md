@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Simulator builds for tvOS, watchOS and visionOS; watch-only apps
+
+- The SDK carries the AppleTVSimulator, WatchSimulator and XRSimulator platforms, and xtool builds for `arm64-apple-tvos-simulator`, `arm64-apple-watchos-simulator` and `arm64-apple-xros-simulator` (xtool pin `ff3d7cb`; SDK stamp `epoch=6`, so the installer rebuilds the SDK). The installer puts actool, ibtool, xcstringstool and momc into every simulator platform; the iPhone simulator had none before.
+- A watch app with no companion iPhone app gets `WKWatchOnly`, as Xcode's watch-only template does. xtool wrote `WKRunsIndependentlyOfCompanionApp`, and installd refused the app ("must specify the key WKCompanionAppBundleIdentifier"). An app that names its companion keeps `WKRunsIndependentlyOfCompanionApp`.
+- `xtool sign --udid UDID [--device-name NAME]` registers a device with the team before signing, for devices reached only over the network; signing provisions a companion watch app (`Watch/<Name>.app`) like an extension.
+- `tests/simulators/run.sh` builds one SwiftUI app for the four simulator targets and checks the platform keys; with `X86SIM_ROOT` and `X86SIM_DEVICES` it installs and launches it in x86Sim's simulators. Checked in x86Sim: iPhone 17, iPad Air 11-inch, Apple TV 4K (iOS and tvOS 27.2) and Apple Watch Series 11 (watchOS 27.2) run it and take taps; the visionOS 27.2 simulator installed it but did not reach its home screen (its backboardd and wakeboardd crash in x86Sim).
+
 ### tvOS app icons and Top Shelf; `xtool sign`; Apple TV installs without sudo
 
 - The Linux `actool` compiles tvOS `.brandassets`: the layered App Icon (image stack with its layer images, flattened image and radiosity image), the App Store icon (idiom `marketing`) and the Top Shelf images, and writes `CFBundlePrimaryIcon` and `TVTopShelfImage` into the partial Info.plist. AssetKit pin `x86sim/AssetKit` `604aad4` (branch `omarchy/tvos-brandassets`). Before, the set was skipped ("not supported by AssetKit") and tvOS apps had a blank icon and no Top Shelf image.
