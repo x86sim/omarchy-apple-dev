@@ -10,7 +10,8 @@
 # With X86SIM_ROOT (an x86sim checkout) and X86SIM_DEVICES ("ios=var/device-a64
 # tvos=var/device-a64-apple-tv watchos=var/device-a64-watch xros=var/device-a64-vision",
 # any subset), each device is booted, the build installed and launched, a screenshot
-# written to $OUT_DIR (default ./sim-screens), the app uninstalled and the device stopped.
+# written to $OUT_DIR (default ./sim-screens in the directory it was run from), the app
+# uninstalled and the device stopped; a failed install, launch or screenshot fails the test.
 # Checked 2026-11-19 with x86sim on iOS, iPadOS, tvOS and watchOS 27.2; the visionOS 27.2
 # simulator did not reach its home screen in x86Sim (backboardd and wakeboardd crashing).
 set -uo pipefail
@@ -21,6 +22,7 @@ if ! command -v xtool >/dev/null || ! grep -q '"arm64-apple-xros-simulator"' "$s
   echo "SKIP  simulators: needs xtool and a Darwin SDK with the simulator platforms (epoch 6)"
   exit 0
 fi
+start=$PWD
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 cp -r "$here/DeviceTest" "$tmp/"
@@ -53,20 +55,26 @@ PY
   if [ "$gplat $gdt" != "$plat $dt" ] || { command -v llvm-objdump >/dev/null && [ "$binplat" != "$lc" ]; }; then
     echo "FAIL $triple: Info.plist $gplat $gdt, binary $binplat (want $plat $dt $lc)"; fail=1; continue
   fi
-  if [ "$os" = watchos ] && [ "$gwatch" != True ]; then
-    echo "FAIL $triple: no WKWatchOnly (installd refuses a watch app without a companion)"; fail=1; continue
+  if [ "$os" = watchos ] && { [ "$gwatch" != True ] || grep -q WKRunsIndependentlyOfCompanionApp "$app/Info.plist"; }; then
+    echo "FAIL $triple: needs WKWatchOnly and no WKRunsIndependentlyOfCompanionApp (installd refuses either way)"; fail=1; continue
   fi
   echo "ok   $triple: $gplat, $gdt, binary $binplat"
 done
 if [ -n "${X86SIM_ROOT:-}" ] && [ -n "${X86SIM_DEVICES:-}" ]; then
-  out=${OUT_DIR:-$PWD/sim-screens}
+  out=${OUT_DIR:-$start/sim-screens}
   mkdir -p "$out"
   for pair in $X86SIM_DEVICES; do
     os=${pair%%=*} dev=${pair#*=}
-    [ -d "$tmp/out/$os" ] || continue
-    UNINSTALL=1 bash "$here/sim-run.sh" "$dev" "$tmp/out/$os/DeviceTest.app" com.designgears.devicetest \
-      "$out/$os-$(basename "$dev").png" 2 | sed 's/^/  /'
-    [ -f "$out/$os-$(basename "$dev").png" ] || fail=1
+    if [ -z "${want[$os]:-}" ]; then
+      echo "FAIL X86SIM_DEVICES: unknown OS '$os' (ios tvos watchos xros)"; fail=1; continue
+    fi
+    [ -d "$tmp/out/$os" ] || { echo "FAIL $os: no build to run"; fail=1; continue; }
+    if UNINSTALL=1 bash "$here/sim-run.sh" "$dev" "$tmp/out/$os/DeviceTest.app" com.designgears.devicetest \
+         "$out/$os-$(basename "$dev").png" 2 > "$tmp/run-$os.log" 2>&1; then
+      echo "ok   $os on $(basename "$dev"): installed, launched, $out/$os-$(basename "$dev").png"
+    else
+      echo "FAIL $os on $(basename "$dev"):"; sed 's/^/  /' "$tmp/run-$os.log"; fail=1
+    fi
   done
 fi
 exit "$fail"

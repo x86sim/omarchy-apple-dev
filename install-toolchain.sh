@@ -115,7 +115,7 @@ fetch_commit() { # repo sha dir
 # tvOS development profiles.
 # Built from source with its Swift runtime libraries next to it ($ORIGIN only).
 XTOOL_REPO=https://github.com/x86sim/xtool
-XTOOL_SHA=ff3d7cbe046ab6e78825f2e6864fb9aef8c9e25e
+XTOOL_SHA=b0ab5384f5d33f0ac2c53cf230fc1b2f9fe14e0c
 # The SDK stamp that pin writes (SDKBuilder.currentSDKVersion: epoch, darwin-tools and OpenAppleMacros
 # versions). Change it together with XTOOL_SHA; tests/sdk-state/check.sh compares it with the pinned source.
 XTOOL_SDK_VERSION="epoch=6,darwinTools=1.1.0-x86sim.2,oam=1.4.1"
