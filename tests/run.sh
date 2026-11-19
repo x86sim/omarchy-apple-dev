@@ -61,6 +61,9 @@ bash tests/install-venv/run.sh || fail=1
 echo "== tests/sdk-state/check.sh"
 bash tests/sdk-state/check.sh || fail=1
 
+echo "== tests/watchos-chained-fixups/run.sh"
+bash tests/watchos-chained-fixups/run.sh || fail=1
+
 echo "== tests/flutter-dart-symbols/run.sh"
 bash tests/flutter-dart-symbols/run.sh || fail=1
 

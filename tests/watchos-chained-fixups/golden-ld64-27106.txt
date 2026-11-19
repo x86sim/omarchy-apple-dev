@@ -1,0 +1,12 @@
+# imports_format=2
+# __DATA_CONST max_valid_pointer=0x100000 page_count=1 starts=[0]
+__DATA_CONST+0x0 bind _printf +0
+# imports_format=2
+# __DATA max_valid_pointer=0x100000 page_count=1 starts=[32769]
+__DATA+0x0 rebase 0x101ac
+__DATA+0xcc rebase 0x101b0
+__DATA+0xd0 rebase 0x101ac
+__DATA+0x19c rebase 0x101b4
+__DATA+0x1a0 bind _puts +8
+__DATA+0x1a4 bind _puts+200 +0
+__DATA+0x1a8 bind _puts-4 +0

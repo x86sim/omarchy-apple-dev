@@ -30,12 +30,27 @@ Compared: the bundle file list, every Info.plist key, and the Mach-O load comman
 
 | What | Mac | Linux | Why |
 |---|---|---|---|
-| watchOS arm64_32 fixups | `LC_DYLD_CHAINED_FIXUPS`, `LC_DYLD_EXPORTS_TRIE` | `LC_DYLD_INFO_ONLY`, plus `__stub_helper`/`__la_symbol_ptr` | `ld64.lld` 21: "-fixup_chains is only supported on x86_64 and arm64 targets". watchOS loads the opcode format. |
 | Linker identity in `LC_BUILD_VERSION` | `ld 27106.1` | `lld 21.1.6` | different linker |
 | `LC_SOURCE_VERSION 0.0` | present | absent | lld does not write it |
 | `BuildMachineOSBuild` | `26A428` | absent | no macOS host; set `BUILD_MACHINE_OS_BUILD` to copy it |
 | `LC_RPATH @executable_path/Frameworks` | absent | present | xtool sets it for embedded frameworks; Xcode's app templates set it too, the bare reference project did not |
 | iOS orientation keys | absent | present | xtool defaults; Xcode templates set them, the bare reference project did not |
+
+## 2026-11-19: arm64_32 chained fixups
+
+The SDK toolset is now `x86sim/darwin-tools-linux-llvm` `v1.1.0-x86sim.1`: lld with
+`DYLD_CHAINED_PTR_32` support (`x86sim/llvm-project@2ae54ae`), xtool
+`x86sim/xtool@351c79f`, stamp `epoch=5,darwinTools=1.1.0-x86sim.1,oam=1.4.1`.
+The watchOS arm64_32 slice now has `LC_DYLD_CHAINED_FIXUPS` and `LC_DYLD_EXPORTS_TRIE`
+and the same sections as Xcode's (no `__stub_helper`/`__la_symbol_ptr`). On a C test
+with 200-byte gaps between pointers and inline, large and negative bind addends
+(`tests/watchos-chained-fixups/gap.c`), Apple's `dyld_info -fixups` prints the same
+fixups for the lld and ld64 outputs, including the multi-start page.
+
+Differences that come from the compiler, not the linker (on every platform, iOS
+included): Xcode's Swift binds `swift_retain_x8`-style register entry points and
+`___chkstk_darwin`; the open-source Swift 6.4.2 binds the plain entry points and
+17-20 weak `__swift_FORCE_LOAD_$_swift*` symbols.
 
 ## Signing
 

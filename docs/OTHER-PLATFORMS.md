@@ -29,9 +29,7 @@ package's platform version, the `DT*` keys, and for watchOS a standalone app:
 win. Signing makes a `TVOS_APP_DEVELOPMENT` profile for Apple TV apps; watch and
 Vision Pro devices go into the usual iOS development profile.
 
-How close the output is to Xcode's, and what is still different (watchOS arm64_32
-uses classic dyld fixups because `ld64.lld` has no chained fixups for that
-architecture): [receipts/2026-11-18-tvos-watchos-visionos-parity.md](../receipts/2026-11-18-tvos-watchos-visionos-parity.md).
+How close the output is to Xcode's, and what is still different: [receipts/2026-11-18-tvos-watchos-visionos-parity.md](../receipts/2026-11-18-tvos-watchos-visionos-parity.md).
 
 Not done yet: installing on the devices (Apple TV and Vision Pro pair over the
 network, a watch app installs through its paired iPhone), watch apps embedded in an
