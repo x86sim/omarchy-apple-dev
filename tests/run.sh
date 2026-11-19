@@ -64,6 +64,9 @@ bash tests/sdk-state/check.sh || fail=1
 echo "== tests/watchos-chained-fixups/run.sh"
 bash tests/watchos-chained-fixups/run.sh || fail=1
 
+echo "== tests/actool-tvos-flags/run.sh"
+bash tests/actool-tvos-flags/run.sh || fail=1
+
 echo "== tests/flutter-dart-symbols/run.sh"
 bash tests/flutter-dart-symbols/run.sh || fail=1
 

@@ -25,6 +25,9 @@ let valueFlags: Set<String> = [
     "--include-language", "--sticker-pack-strings-file", "--standalone-icon-behavior", "--ui-framework-family",
     "--lightweight-asset-runtime-mode", "--flattened-app-icon-path", "--filter-for-device-model",
     "--filter-for-device-os-version", "--filter-for-thinning-device-configuration", "--asset-pack-output-specifications",
+    // SwiftBuild passes these for tvOS (Game Center identifiers); without them here the prefix
+    // was read as a catalog path.
+    "--leaderboard-identifier-prefix", "--leaderboard-set-identifier-prefix",
 ]
 var args = CommandLine.arguments.dropFirst().makeIterator()
 while let arg = args.next() {
