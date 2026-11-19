@@ -12,8 +12,8 @@
 # any subset), each device is booted, the build installed and launched, a screenshot
 # written to $OUT_DIR (default ./sim-screens in the directory it was run from), the app
 # uninstalled and the device stopped; a failed install, launch or screenshot fails the test.
-# Checked 2026-11-19 with x86sim on iOS, iPadOS, tvOS and watchOS 27.2; the visionOS 27.2
-# simulator did not reach its home screen in x86Sim (backboardd and wakeboardd crashing).
+# Checked 2026-11-19 with x86sim on iOS, iPadOS, tvOS, watchOS and visionOS 27.2 (visionOS
+# needs Metal: x86sim e72b255 or later boots it with X86SIM_METAL=all).
 set -uo pipefail
 here=$(dirname "$(readlink -f "$0")")
 sdk_bundle="${XDG_CONFIG_HOME:+$XDG_CONFIG_HOME/swiftpm}"
