@@ -32,13 +32,17 @@ def main():
         elif current and line.strip().startswith("tvl"):
             _, kind, _size, data = line.split(maxsplit=3)
             if kind == "1012":
-                raw, parts, i = bytes.fromhex(data), [], 0
-                # Each layer reference ends in a (17 identifier=N) key pair.
-                while (j := raw.find(b"\x11\x00", i)) >= 0:
-                    ident = int.from_bytes(raw[j + 2:j + 4], "little")
-                    parts += [raw[i:j + 2].hex(), f"<{facets.get(ident, f'?{ident}')}>"]
-                    i = j + 4
-                data = "".join(parts) + raw[i:].hex()
+                # u32 count, u32 0, then one 48-byte layer record each (x, y, w, h, blend,
+                # f32 opacity, u32 16, then the key: (1 look)(2 element)(17 identifier)(0 0)
+                # and 4 more bytes). The identifier is at record offset 42.
+                raw = bytearray(bytes.fromhex(data))
+                count = int.from_bytes(raw[:4], "little")
+                names = []
+                for n in range(count):
+                    at = 8 + 48 * n + 42
+                    names.append(facets.get(int.from_bytes(raw[at:at + 2], "little"), "?"))
+                    raw[at:at + 2] = b"\0\0"
+                data = raw.hex() + " layers=" + ",".join(names)
             renditions[current].append(f"tvl {kind} {data}")
     for key in sorted(renditions):
         print(key)

@@ -18,7 +18,7 @@ let package = Package(
         // tvOS .brandassets: layered App Icon image stacks (flattened and radiosity images,
         // App Store icon) and Top Shelf images, as actool 27.2 (x86sim/AssetKit
         // omarchy/tvos-brandassets, on top of the revision above).
-        .package(url: "https://github.com/x86sim/AssetKit", revision: "c1b180cf6004302f5337dfc3f6f9bdd2680e7ea7"),
+        .package(url: "https://github.com/x86sim/AssetKit", revision: "604aad4a72527052ae265f41cc1b111babbbac43"),
         .package(url: "https://github.com/tayloraswift/swift-png", from: "4.5.0"),
     ],
     targets: [

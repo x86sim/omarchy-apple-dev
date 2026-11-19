@@ -1,12 +1,12 @@
 {
-  "originHash" : "7cdff1b6fdcf0f219d0f59b1441967a8d04e2b00d5a11ea666e94162739b05e8",
+  "originHash" : "6c77350cf26aad96cbd7ca3f357ccca4d7fdeb1cf3c6982ea7f9ec9469e163b8",
   "pins" : [
     {
       "identity" : "assetkit",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/x86sim/AssetKit",
       "state" : {
-        "revision" : "c1b180cf6004302f5337dfc3f6f9bdd2680e7ea7"
+        "revision" : "604aad4a72527052ae265f41cc1b111babbbac43"
       }
     },
     {

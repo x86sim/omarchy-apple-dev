@@ -4,9 +4,10 @@
 
 ### tvOS app icons and Top Shelf; `xtool sign`; Apple TV installs without sudo
 
-- The Linux `actool` compiles tvOS `.brandassets`: the layered App Icon (image stack with its layer images, flattened image and radiosity image), the App Store icon (idiom `marketing`) and the Top Shelf images, and writes `CFBundlePrimaryIcon` and `TVTopShelfImage` into the partial Info.plist. AssetKit pin `x86sim/AssetKit` `c1b180c` (branch `omarchy/tvos-brandassets`). Before, the set was skipped ("not supported by AssetKit") and tvOS apps had a blank icon and no Top Shelf image.
+- The Linux `actool` compiles tvOS `.brandassets`: the layered App Icon (image stack with its layer images, flattened image and radiosity image), the App Store icon (idiom `marketing`) and the Top Shelf images, and writes `CFBundlePrimaryIcon` and `TVTopShelfImage` into the partial Info.plist. AssetKit pin `x86sim/AssetKit` `604aad4` (branch `omarchy/tvos-brandassets`). Before, the set was skipped ("not supported by AssetKit") and tvOS apps had a blank icon and no Top Shelf image.
   - Compared with Apple's actool 27.2: the same renditions, keys, CSI headers and metadata blocks, byte for byte; pixel bodies and identifier values differ (AssetKit hashes names differently). Apple's `assetutil --validate-file` accepts the output. The radiosity image is a blurred, padded copy of the flattened image in AssetKit's encoding, not Apple's.
   - `tests/actool-tvos-brandassets/run.sh` compiles a two-layer stack and compares it with Apple's output.
+  - A layer image AssetKit cannot decode (JPEG, HEIC) keeps the stack and layers but gets no flattened or radiosity image, instead of failing the catalog; `CFBundlePrimaryIcon` only names a stack that was written; brand assets compile for tvOS only, as Apple's actool.
 - `tools/compile-app-icon.sh` (ship.sh step 3, device-run.sh) takes the platform from the built app, so tvOS, watchOS and visionOS icons compile for their platform, and it finds `.brandassets` sets. `ship.sh` takes `TRIPLE` (e.g. `arm64-apple-tvos`).
 - `xtool sign APP` (xtool pin `b957645`) signs a built app for development without a device connection, for apps installed another way.
 - `tools/systemd/pymobiledevice3-tunneld.service.in` and docs/OTHER-PLATFORMS.md: a root `tunneld` service so Apple TV installs and launches run without sudo.

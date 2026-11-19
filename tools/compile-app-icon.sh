@@ -34,7 +34,10 @@ trap 'rm -rf "$stage"' EXIT
 icon=${APP_ICON:-AppIcon}
 read -r platform device < <("$PY" -c 'import plistlib,sys
 p = (plistlib.load(open(sys.argv[1], "rb")).get("CFBundleSupportedPlatforms") or ["iPhoneOS"])[0]
-print({"AppleTVOS": "appletvos tv", "WatchOS": "watchos watch", "XROS": "xros vision"}.get(p, "iphoneos -"))' "$app/Info.plist")
+print({"AppleTVOS": "appletvos tv", "AppleTVSimulator": "appletvsimulator tv",
+       "WatchOS": "watchos watch", "WatchSimulator": "watchsimulator watch",
+       "XROS": "xros vision", "XRSimulator": "xrsimulator vision",
+       "iPhoneSimulator": "iphonesimulator -"}.get(p, "iphoneos -"))' "$app/Info.plist")
 device_args=()
 [ "$device" = - ] || device_args=(--target-device "$device")
 alt_args=()
@@ -71,7 +74,7 @@ for f in ./*.icon; do [ -d "$f" ] && catalogs+=("$f"); done
 mapfile -t catalogs < <(for c in "${catalogs[@]}"; do readlink -f "$c"; done | sort -u)
 min=$("$PY" -c 'import plistlib,sys; print(plistlib.load(open(sys.argv[1],"rb"))["MinimumOSVersion"])' "$app/Info.plist")
 case "${#catalogs[@]}" in
-  0) echo "no $icon.appiconset or $icon.icon in the project; App Store upload needs an app icon" ;;
+  0) echo "no $icon.appiconset, $icon.brandassets (tvOS) or $icon.icon in the project; App Store upload needs an app icon (APP_ICON in xtool.env names the set)" ;;
   *)
     "$ACTOOL" "${catalogs[@]}" --compile "$app" --platform "$platform" --app-icon "$icon" \
       "${device_args[@]}" "${alt_args[@]}" \
@@ -99,7 +102,7 @@ for appex in "$app"/PlugIns/*.appex; do
     echo "  $exname: $exicon.appiconset is an empty placeholder; nothing to compile"
     continue
   fi
-  "$ACTOOL" "${exsets[0]}" --compile "$appex" --platform "$platform" --app-icon "$exicon" \
+  "$ACTOOL" "${exsets[0]}" --compile "$appex" --platform "$platform" --app-icon "$exicon" "${device_args[@]}" \
     --minimum-deployment-target "$min" --output-partial-info-plist "$stage/$exname-icon.plist" \
     --output-format human-readable-text
   "$PY" -c 'import plistlib,sys; p=sys.argv[1]; d=plistlib.load(open(p,"rb")); d.update(plistlib.load(open(sys.argv[2],"rb")))
