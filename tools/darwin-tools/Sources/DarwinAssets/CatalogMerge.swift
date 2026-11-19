@@ -92,6 +92,15 @@ public enum CatalogMerge {
                         alternateIconComposers.append(
                             IconComposerCompiler.Input(name: name, directory: child, idioms: []))
                     }
+                case "brandassets":
+                    // tvOS app icon image stacks + Top Shelf images: the set
+                    // named by --app-icon compiles (AssetKit's
+                    // BrandAssetsCompiler); others drop, like deselected
+                    // appiconsets.
+                    let name = child.deletingPathExtension().lastPathComponent
+                    if name == appIcon || appIcon == nil {
+                        try place(child, at: target)
+                    }
                 case "solidimagestack":
                     // visionOS-only: actool 27.0 drops it silently for iphoneos.
                     continue
