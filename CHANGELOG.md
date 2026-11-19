@@ -4,9 +4,9 @@
 
 ### arm64_32 chained fixups for watchOS
 
-- The SDK toolset comes from `x86sim/darwin-tools-linux-llvm` `v1.1.0-x86sim.1`: xtool-org's 1.1.0 with lld writing chained fixups (`DYLD_CHAINED_PTR_32`) for arm64_32, as ld64 does for watchOS 7 and later. Before, the arm64_32 slice of a watchOS app used dyld opcode fixups and lazy-binding stubs. Long gaps between pointers start a new chain in the page (multi-start pages); bind addends above 63 or below 0 go into the imports table.
-- xtool pin `351c79f`; SDK stamp `darwinTools=1.1.0-x86sim.1`, so the installer rebuilds the SDK.
-- `tests/watchos-chained-fixups/run.sh` links a C test with the SDK's lld and compares the decoded chains with ld64 27106.1's (Xcode 27.2). Apple's `dyld_info -fixups` reads both outputs identically. No watchOS app was run on a watch.
+- The SDK toolset comes from `x86sim/darwin-tools-linux-llvm` `v1.1.0-x86sim.2`: xtool-org's 1.1.0 with lld writing chained fixups (`DYLD_CHAINED_PTR_32`) for arm64_32, as ld64 does for watchOS 7 and later. Before, the arm64_32 slice of a watchOS app used dyld opcode fixups and lazy-binding stubs. Long gaps between pointers start a new chain in the page (multi-start pages); bind addends above 63 or below 0 go into the imports table. A segment with more chain starts than the 15-bit start index holds is an error that suggests `-no_fixup_chains`, as in ld64.
+- xtool pin `5f9b29a`; SDK stamp `darwinTools=1.1.0-x86sim.2`, so the installer rebuilds the SDK.
+- `tests/watchos-chained-fixups/run.sh` links two C tests (long gaps and addends; five pages with 124- and 128-byte spacing) with the SDK's lld and compares the decoded chains with ld64 27106.1's (Xcode 27.2). Apple's `dyld_info -fixups` reads both outputs identically. No watchOS app was run on a watch.
 
 ### tvOS, watchOS and visionOS apps in full mode
 

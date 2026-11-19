@@ -38,9 +38,9 @@ Compared: the bundle file list, every Info.plist key, and the Mach-O load comman
 
 ## 2026-11-19: arm64_32 chained fixups
 
-The SDK toolset is now `x86sim/darwin-tools-linux-llvm` `v1.1.0-x86sim.1`: lld with
-`DYLD_CHAINED_PTR_32` support (`x86sim/llvm-project@2ae54ae`), xtool
-`x86sim/xtool@351c79f`, stamp `epoch=5,darwinTools=1.1.0-x86sim.1,oam=1.4.1`.
+The SDK toolset is now `x86sim/darwin-tools-linux-llvm` `v1.1.0-x86sim.2`: lld with
+`DYLD_CHAINED_PTR_32` support (`x86sim/llvm-project@2a0358b`), xtool
+`x86sim/xtool@5f9b29a`, stamp `epoch=5,darwinTools=1.1.0-x86sim.2,oam=1.4.1`.
 The watchOS arm64_32 slice now has `LC_DYLD_CHAINED_FIXUPS` and `LC_DYLD_EXPORTS_TRIE`
 and the same sections as Xcode's (no `__stub_helper`/`__la_symbol_ptr`). On a C test
 with 200-byte gaps between pointers and inline, large and negative bind addends
