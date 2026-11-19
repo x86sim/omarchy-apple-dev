@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### tvOS, watchOS and visionOS apps in full mode
+
+- `xtool dev build --triple arm64-apple-tvos`, `arm64_32-apple-watchos` and `arm64-apple-xros` build, package and (`--sign`) sign apps on Linux. Before, the SDK held only iPhoneOS, iPhoneSimulator and MacOSX, and xtool packaged everything as an iPhone app.
+- The xtool pin moves to `x86sim/xtool` branch `omarchy-platforms` (`8aa6948`, on top of the previous pin `7cc56c3`). It copies the AppleTVOS, WatchOS and XROS platforms into the SDK, registers their triples, and packages each platform with the Info.plist keys, `DT*` keys and `PkgInfo` Xcode 27 writes. watchOS binaries are universal arm64_32 + arm64 like Xcode's (`llvm-lipo`). Apple TV apps get `TVOS_APP_DEVELOPMENT` profiles.
+- The `ld64.lld` trampoline takes the SDK version for `LC_BUILD_VERSION` from `-syslibroot` (it recorded the deployment target before, on iOS too) and drops the Linux toolchain's back-deploy rpath.
+- The SDK stamp moves to `epoch=5`, so the installer rebuilds an older SDK from `XCODE_XIP` or `Xcode.app`. `install-toolchain.sh` installs actool, ibtool, xcstringstool and momc into the new platforms and applies the same build-setting patches as for iPhoneOS.
+- Compared with Xcode 27.2 builds of the same app: [receipt](receipts/2026-11-18-tvos-watchos-visionos-parity.md). Still different: watchOS arm64_32 uses classic dyld fixups (no chained fixups for arm64_32 in `ld64.lld`). No app was installed on an Apple TV, Watch or Vision Pro.
+
 ### Icon Composer background fills of kind automatic-gradient
 
 - `actool` (AssetKit) ignored an `icon.json` background of kind `automatic-gradient`

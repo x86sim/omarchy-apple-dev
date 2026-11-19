@@ -108,13 +108,17 @@ fetch_commit() { # repo sha dir
 # the stdin fix #375, the profile fix #430, #422, and #432, which keeps the release build from
 # crashing the compiler since #389, xtool-org/xtool#431) plus the fork's own packaging/build-server
 # fixes, carried in the fork only (upstream #290-#293 and #295 are still open, #302 was closed
-# unmerged). Fork tag omarchy-main-pin, head of joshuaswarren/xtool#4.
+# unmerged). Fork tag omarchy-main-pin, head of joshuaswarren/xtool#4 (7cc56c3).
+# On top of that, x86sim/xtool branch omarchy-platforms adds tvOS, watchOS and visionOS:
+# the AppleTVOS/WatchOS/XROS platforms and triples in the SDK, per-platform packaging
+# and Info.plist keys matching Xcode 27, universal arm64_32+arm64 watchOS binaries, and
+# tvOS development profiles.
 # Built from source with its Swift runtime libraries next to it ($ORIGIN only).
-XTOOL_REPO=https://github.com/joshuaswarren/xtool
-XTOOL_SHA=7cc56c391a67652e86d164eddbbd62065a26599f
+XTOOL_REPO=https://github.com/x86sim/xtool
+XTOOL_SHA=8aa69482d91ba7d8deb1315f653530439d607125
 # The SDK stamp that pin writes (SDKBuilder.currentSDKVersion: epoch, darwin-tools and OpenAppleMacros
 # versions). Change it together with XTOOL_SHA; tests/sdk-state/check.sh compares it with the pinned source.
-XTOOL_SDK_VERSION="epoch=4,darwinTools=1.1.0,oam=1.4.1"
+XTOOL_SDK_VERSION="epoch=5,darwinTools=1.1.0,oam=1.4.1"
 install_xtool() {
   local src="$HOME/.cache/omarchy-apple-dev/xtool-$XTOOL_SHA"
   local dest="$HOME/.local/lib/omarchy-apple-dev/xtool-$XTOOL_SHA"
@@ -185,10 +189,25 @@ install_darwin_tools() {
   install -m644 "$REPO_DIR/tools/nibarchive.py" "$REPO_DIR/tools/keyorder.py" "$macbin/"
   install -m755 "$REPO_DIR/tools/momc" "$macbin/momc"
   install -m644 "$REPO_DIR/tools/xcstrings_symbols.py" "$macbin/xcstrings_symbols.py"
+  # tvOS, watchOS and visionOS builds (--triple arm64-apple-tvos, arm64_32-apple-watchos,
+  # arm64-apple-xros) look in their own platform's Developer/usr/bin. The SDK has
+  # these platforms only when it was built from an Xcode that ships them.
+  local p pbin
+  for p in AppleTVOS WatchOS XROS; do
+    [ -d "$DARWIN_SDK_BUNDLE/Developer/Platforms/$p.platform" ] || continue
+    pbin="$DARWIN_SDK_BUNDLE/Developer/Platforms/$p.platform/Developer/usr/bin"
+    mkdir -p "$pbin"
+    install -m755 "$REPO_DIR/tools/darwin-tools/.build/release/actool" "$pbin/actool"
+    install -m755 "$REPO_DIR/tools/xcstringstool" "$REPO_DIR/tools/ibtool" "$pbin/"
+    install -m644 "$REPO_DIR/tools/nibarchive.py" "$REPO_DIR/tools/keyorder.py" "$pbin/"
+    install -m755 "$REPO_DIR/tools/momc" "$pbin/momc"
+    install -m644 "$REPO_DIR/tools/xcstrings_symbols.py" "$pbin/xcstrings_symbols.py"
+  done
   python3 - "$DARWIN_SDK_BUNDLE" <<'PY'
 import json, os, plistlib, sys
 bundle = sys.argv[1]
-for platform_name in ("iPhoneOS.platform", "MacOSX.platform"):
+PLATFORMS = ("iPhoneOS.platform", "MacOSX.platform", "AppleTVOS.platform", "WatchOS.platform", "XROS.platform")
+for platform_name in PLATFORMS:
     platform = os.path.join(bundle, "Developer/Platforms", platform_name, "Info.plist")
     if not os.path.isfile(platform):
         continue
@@ -208,7 +227,7 @@ with open(toolset + ".tmp", "w") as f:
 os.replace(toolset + ".tmp", toolset)
 # Linux has no `tapi`, so swift-build cannot generate eager-linking stubs for
 # promoted dylibs; its non-Darwin platforms hardcode the same DefaultProperties.
-for platform_name in ("iPhoneOS.platform", "MacOSX.platform"):
+for platform_name in PLATFORMS:
     sdks = os.path.join(bundle, "Developer/Platforms", platform_name, "Developer/SDKs")
     for sdk in sorted(os.listdir(sdks)) if os.path.isdir(sdks) else []:
         if os.path.islink(os.path.join(sdks, sdk)):

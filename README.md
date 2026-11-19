@@ -315,6 +315,8 @@ Large projects need `ulimit -n 65536` before `xtool dev build`.
 - [docs/OVER-TAILNET.md](docs/OVER-TAILNET.md): cable-free deploys on iOS 27.
 - [docs/SHIPPING.md](docs/SHIPPING.md): `ship.sh` signing options.
 - [docs/DISTROS.md](docs/DISTROS.md): Ubuntu, Fedora, NixOS.
+- [docs/OTHER-PLATFORMS.md](docs/OTHER-PLATFORMS.md): tvOS, watchOS and
+  visionOS apps (full mode; builds and signs, device installs not yet).
 - [docs/CRASH-SYMBOLICATION.md](docs/CRASH-SYMBOLICATION.md): reading crash
   reports on Linux.
 - [sdk-free/README.md](sdk-free/README.md): the no-Xcode mode.
