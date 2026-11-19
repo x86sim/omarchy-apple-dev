@@ -29,7 +29,14 @@ trap 'rm -rf "$stage"' EXIT
 # ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES / _INCLUDE_ALL_APPICON_ASSETS) add the
 # --alternate-app-icon / --include-all-app-icons flags and every icon-bearing catalog of the
 # target to the same invocation, like Xcode compiles all of a target's catalogs in one call.
+# The platform comes from the built app (CFBundleSupportedPlatforms): a tvOS app's icon is a
+# .brandassets set (layered App Icon + Top Shelf images), compiled for --target-device tv.
 icon=${APP_ICON:-AppIcon}
+read -r platform device < <("$PY" -c 'import plistlib,sys
+p = (plistlib.load(open(sys.argv[1], "rb")).get("CFBundleSupportedPlatforms") or ["iPhoneOS"])[0]
+print({"AppleTVOS": "appletvos tv", "WatchOS": "watchos watch", "XROS": "xros vision"}.get(p, "iphoneos -"))' "$app/Info.plist")
+device_args=()
+[ "$device" = - ] || device_args=(--target-device "$device")
 alt_args=()
 alt_names=${ALTERNATE_APP_ICONS:-}
 if [ -n "$alt_names" ]; then
@@ -47,13 +54,13 @@ for src in "Sources/$(basename "$app" .app)" .; do
   depth=; [ "$src" = . ] && depth="-maxdepth 4"
   # shellcheck disable=SC2086
   mapfile -t found < <(find -L "$src" $depth \( -name .build -o -name xtool \) -prune -o \
-    \( -name "*.appiconset" -type d -o -name "*.icon" -type d \) -print)
+    \( -name "*.appiconset" -type d -o -name "*.brandassets" -type d -o -name "*.icon" -type d \) -print)
   for f in "${found[@]}"; do
     # Every icon-bearing catalog and .icon of the target joins the call, as Xcode passes all
     # of a target's catalogs; actool selects by --app-icon / --alternate-app-icon /
     # --include-all-app-icons and drops the rest silently, like Apple's.
     case "$f" in
-      *.appiconset) catalogs+=("$(dirname "$f")") ;;
+      *.appiconset|*.brandassets) catalogs+=("$(dirname "$f")") ;;
       *.icon) catalogs+=("$f") ;;
     esac
   done
@@ -66,8 +73,8 @@ min=$("$PY" -c 'import plistlib,sys; print(plistlib.load(open(sys.argv[1],"rb"))
 case "${#catalogs[@]}" in
   0) echo "no $icon.appiconset or $icon.icon in the project; App Store upload needs an app icon" ;;
   *)
-    "$ACTOOL" "${catalogs[@]}" --compile "$app" --platform iphoneos --app-icon "$icon" \
-      "${alt_args[@]}" \
+    "$ACTOOL" "${catalogs[@]}" --compile "$app" --platform "$platform" --app-icon "$icon" \
+      "${device_args[@]}" "${alt_args[@]}" \
       --minimum-deployment-target "$min" --output-partial-info-plist "$stage/icon.plist" \
       --output-format human-readable-text
     "$PY" -c 'import plistlib,sys; p=sys.argv[1]; d=plistlib.load(open(p,"rb")); d.update(plistlib.load(open(sys.argv[2],"rb")))
@@ -92,7 +99,7 @@ for appex in "$app"/PlugIns/*.appex; do
     echo "  $exname: $exicon.appiconset is an empty placeholder; nothing to compile"
     continue
   fi
-  "$ACTOOL" "${exsets[0]}" --compile "$appex" --platform iphoneos --app-icon "$exicon" \
+  "$ACTOOL" "${exsets[0]}" --compile "$appex" --platform "$platform" --app-icon "$exicon" \
     --minimum-deployment-target "$min" --output-partial-info-plist "$stage/$exname-icon.plist" \
     --output-format human-readable-text
   "$PY" -c 'import plistlib,sys; p=sys.argv[1]; d=plistlib.load(open(p,"rb")); d.update(plistlib.load(open(sys.argv[2],"rb")))

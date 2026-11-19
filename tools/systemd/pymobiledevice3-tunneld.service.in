@@ -1,0 +1,16 @@
+[Unit]
+Description=pymobiledevice3 tunneld: iOS 17+/tvOS tunnels for Apple devices (localhost only)
+Documentation=https://github.com/doronz88/pymobiledevice3
+After=network-online.target usbmuxd.service
+Wants=network-online.target
+
+[Service]
+# The kernel TUN interface needs root. Pair records and settings stay in the user's
+# ~/.local/share/pymobiledevice3 (pymobiledevice3 resolves its folder via SUDO_USER).
+Environment=SUDO_USER=@USER@ SUDO_UID=@UID@ SUDO_GID=@GID@
+ExecStart=@VENV@/bin/pymobiledevice3 remote tunneld --host 127.0.0.1 --port 49151
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

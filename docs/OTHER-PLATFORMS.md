@@ -31,6 +31,45 @@ Vision Pro devices go into the usual iOS development profile.
 
 How close the output is to Xcode's, and what is still different: [receipts/2026-11-18-tvos-watchos-visionos-parity.md](../receipts/2026-11-18-tvos-watchos-visionos-parity.md).
 
-Not done yet: installing on the devices (Apple TV and Vision Pro pair over the
-network, a watch app installs through its paired iPhone), watch apps embedded in an
+## Apple TV: build, sign and install from Linux
+
+A tvOS app's icon is a `.brandassets` set in its asset catalog (layered App Icon, App Store
+icon, Top Shelf images). Name it in `xtool.env` as `APP_ICON='App Icon & Top Shelf Image'`
+(the set's name). Then, in the xtool project:
+
+```bash
+TRIPLE=arm64-apple-tvos ./ship.sh --device     # build, compile the icon and resources
+xtool sign "xtool/<App>.app"                    # register, fetch the tvOS profile, sign
+```
+
+`xtool sign` registers the bundle ID as written, so the app replaces one built by Xcode
+with the same ID (its data stays). Free-team profiles last 7 days.
+
+Pair the Apple TV once (Settings > Remotes and Devices > Remote App and Devices on the TV,
+then `pymobiledevice3 remote pair` and the PIN it shows). Installing needs a tunnel to the
+TV; pymobiledevice3's `tunneld`, run as a root service, keeps one open so installs run as
+your user:
+
+```bash
+sed -e "s|@USER@|$USER|" -e "s|@UID@|$(id -u)|" -e "s|@GID@|$(id -g)|" \
+    -e "s|@VENV@|$HOME/pymobile3-venv|" tools/systemd/pymobiledevice3-tunneld.service.in \
+  | sudo tee /etc/systemd/system/pymobiledevice3-tunneld.service >/dev/null
+sudo systemctl enable --now pymobiledevice3-tunneld
+```
+
+It listens on 127.0.0.1:49151 and reads the pairing records from your
+`~/.local/share/pymobiledevice3`. Then, with the TV's hardware UDID (`curl
+127.0.0.1:49151` lists the tunnels; `--tunnel` takes the UDID, not the pairing identifier):
+
+```bash
+pymobiledevice3 apps install "xtool/<App>.app" --tunnel <UDID>
+pymobiledevice3 developer dvt launch <bundle id> --tunnel <UDID>
+```
+
+`developer dvt` needs only Developer Mode on the TV. `developer core-device` commands also
+need the developer disk image, which `mounter auto-mount` could not mount on tvOS 27
+(`cryptexd ... invalid asset: ginf`).
+
+Not done yet: installing on a Vision Pro (pairs over the network like the Apple TV) and on a
+watch (through its paired iPhone), watch apps embedded in an
 iPhone app, simulators for these platforms, and no-Xcode mode.

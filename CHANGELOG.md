@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### tvOS app icons and Top Shelf; `xtool sign`; Apple TV installs without sudo
+
+- The Linux `actool` compiles tvOS `.brandassets`: the layered App Icon (image stack with its layer images, flattened image and radiosity image), the App Store icon (idiom `marketing`) and the Top Shelf images, and writes `CFBundlePrimaryIcon` and `TVTopShelfImage` into the partial Info.plist. AssetKit pin `x86sim/AssetKit` `c1b180c` (branch `omarchy/tvos-brandassets`). Before, the set was skipped ("not supported by AssetKit") and tvOS apps had a blank icon and no Top Shelf image.
+  - Compared with Apple's actool 27.2: the same renditions, keys, CSI headers and metadata blocks, byte for byte; pixel bodies and identifier values differ (AssetKit hashes names differently). Apple's `assetutil --validate-file` accepts the output. The radiosity image is a blurred, padded copy of the flattened image in AssetKit's encoding, not Apple's.
+  - `tests/actool-tvos-brandassets/run.sh` compiles a two-layer stack and compares it with Apple's output.
+- `tools/compile-app-icon.sh` (ship.sh step 3, device-run.sh) takes the platform from the built app, so tvOS, watchOS and visionOS icons compile for their platform, and it finds `.brandassets` sets. `ship.sh` takes `TRIPLE` (e.g. `arm64-apple-tvos`).
+- `xtool sign APP` (xtool pin `b957645`) signs a built app for development without a device connection, for apps installed another way.
+- `tools/systemd/pymobiledevice3-tunneld.service.in` and docs/OTHER-PLATFORMS.md: a root `tunneld` service so Apple TV installs and launches run without sudo.
+- Checked on an Apple TV 4K (tvOS 27): SmartTube built with `TRIPLE=arm64-apple-tvos ship.sh --device`, signed with `xtool sign` as `com.designgears.smarttube`, installed over the Xcode-built app through `tunneld` as a normal user (its sign-in and history stayed) and launched with `developer dvt launch`. The home-screen icon was not checked on screen.
+
 ### Bundle IDs as written; tvOS actool flags
 
 - xtool (pin `6a0f696`) registers bundle IDs as the project writes them, as Xcode does. Before, every ID got xtool's `XTL-<id>.` prefix, so a Linux build of an app installed next to the Xcode-built one, as a second app with its own data, instead of replacing it. The app decides once and its extensions follow: the exact ID when the team has it (for example registered by Xcode) or has neither form; the prefixed ID when only that one is registered (an app installed by xtool before keeps its identity); the prefix when Apple says the exact ID is not available (another team has it); other refusals, such as the free-team App ID limit, are reported with Apple's text. App groups follow the app: as written when registered or creatable, else an earlier xtool group (matched loosely, as before), else prefixed. An app that switches to the exact ID installs as a new app; the old `XTL-` one stays on the device with its data. `XTOOL_PREFIX_IDS=1` restores the old behavior.

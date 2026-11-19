@@ -15,7 +15,10 @@ let package = Package(
         // macosx platform compiles with macOS 26's 13-attribute
         // rendition-key schema so AppKit resolves symbols and images (60).
         // Icon Composer automatic-gradient background fills as actool 27.2 (AssetKit PR #6).
-        .package(url: "https://github.com/joshuaswarren/AssetKit", revision: "d797d6ea3421381115faae85b719cb0f2e1d6359"),
+        // tvOS .brandassets: layered App Icon image stacks (flattened and radiosity images,
+        // App Store icon) and Top Shelf images, as actool 27.2 (x86sim/AssetKit
+        // omarchy/tvos-brandassets, on top of the revision above).
+        .package(url: "https://github.com/x86sim/AssetKit", revision: "c1b180cf6004302f5337dfc3f6f9bdd2680e7ea7"),
         .package(url: "https://github.com/tayloraswift/swift-png", from: "4.5.0"),
     ],
     targets: [

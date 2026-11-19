@@ -16,6 +16,8 @@
 #                      signs and installs. With TEAMID, the team-prefix
 #                      placeholders are filled first (tools/fill-team-prefix.py).
 #
+# TRIPLE builds for another target, e.g. arm64-apple-tvos, arm64_32-apple-watchos or
+# arm64-apple-xros (default: xtool's, arm64-apple-ios); see docs/OTHER-PLATFORMS.md.
 # BUILD_NUMBER sets CFBundleVersion (default: UTC yyyymmddHHMM, always increasing).
 # XCODE_VERSION/XCODE_BUILD stamp DTXcode when the SDK came from a .xip.
 set -euo pipefail
@@ -54,7 +56,7 @@ fi
 stage=$(mktemp -d)
 trap 'rm -rf "$stage"' EXIT
 echo "== 1. Release build =="
-xtool dev build --configuration "${CONFIGURATION:-release}"
+xtool dev build --configuration "${CONFIGURATION:-release}" ${TRIPLE:+--triple "$TRIPLE"}
 app=$(find xtool -maxdepth 1 -name '*.app' -print -quit)
 [ -n "$app" ] || { echo "no .app under xtool/" >&2; exit 1; }
 
