@@ -214,8 +214,8 @@ target. Verified on x86_64 with a Compose Multiplatform app. Details:
 
 Verified on x86_64 with Flutter 3.47.6
 ([receipt](receipts/2026-10-08-flutter-signed-ipa.md)). Release mode, arm64
-device builds only: no debug, hot reload or simulator. Plugins must ship a
-`Package.swift`. aarch64 hosts are untested. Details:
+device builds only: no debug, hot reload or simulator. Plugins with only a
+podspec are built with CocoaPods (`./install-toolchain.sh --cocoapods`). aarch64 hosts are untested. Details:
 [flutter/README.md](flutter/README.md).
 
 ```
