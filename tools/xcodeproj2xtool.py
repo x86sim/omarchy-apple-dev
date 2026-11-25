@@ -95,7 +95,13 @@ class PlistParser:
         while self.i < len(self.s):
             c = self.s[self.i]
             if c == "\\" and self.i + 1 < len(self.s):
-                out.append(self.s[self.i + 1])
+                e = self.s[self.i + 1]
+                # Xcode writes shell scripts with \n and \t; \Uxxxx for other characters
+                if e == "U" and re.match(r"[0-9a-fA-F]{4}", self.s[self.i + 2 : self.i + 6]):
+                    out.append(chr(int(self.s[self.i + 2 : self.i + 6], 16)))
+                    self.i += 6
+                    continue
+                out.append({"n": "\n", "t": "\t", "r": "\r", "0": "\0"}.get(e, e))
                 self.i += 2
                 continue
             if c == '"':
