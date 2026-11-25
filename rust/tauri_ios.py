@@ -8,7 +8,7 @@
 - The frontend (build.frontendDist) is built into the binary and served over tauri:// (the tauri/custom-protocol
   feature, as `tauri build`); TAURI_DEV=1 leaves it off, for a devUrl server the phone can reach.
 - tao (Tauri's windowing) adopts the scene life cycle when the Info.plist names its scene delegate (iOS 27 requires
-  that of apps built with its SDK): TaoSceneDelegate, as Tauri's own iOS template does.
+  that of apps built with its SDK): build.py names TaoSceneDelegate for any app on tao, as Tauri's iOS template does.
 
 Not covered: Tauri plugins with Swift code of their own (their ios/ packages expect the tauri-cli generated project);
 a plugin without Swift code works.
@@ -32,11 +32,6 @@ def prepare(s, crate_dir, env, target):
     # loads devUrl, the `tauri dev` server
     if not os.environ.get("TAURI_DEV") and "tauri/custom-protocol" not in s["features"]:
         s["features"].append("tauri/custom-protocol")
-    s["info"].setdefault("UIApplicationSceneManifest", {
-        "UIApplicationSupportsMultipleScenes": False,
-        "UISceneConfigurations": {"UIWindowSceneSessionRoleApplication": [
-            {"UISceneConfigurationName": "Default Configuration", "UISceneDelegateClassName": "TaoSceneDelegate"}]},
-    })
     return s
 
 

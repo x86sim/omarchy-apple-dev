@@ -13,6 +13,7 @@ from [package.metadata.ios] in Cargo.toml, else from what the framework already 
   version = "1.0"                    # CFBundleShortVersionString (default: the package version)
   min-os = "17.0"                    # MinimumOSVersion, IPHONEOS_DEPLOYMENT_TARGET
   entry = "main_rs"                  # a library app: link its staticlib with a main() that calls this C function
+  scene-adapter = true               # attach old-style windows to the scene (default: when winit < 0.31 is used)
   resources = ["assets"]             # files and folders copied into the .app (default: assets/ when there is one)
   features = ["..."]                 # cargo features for the iOS build
   info-plist = { UIStatusBarHidden = true }   # extra Info.plist keys
@@ -87,6 +88,7 @@ def app_settings(manifest, crate_dir, fl):
     s["version"] = str(meta.get("version") or s["version"])
     s["min_os"] = str(meta.get("min-os") or os.environ.get("IPHONEOS_DEPLOYMENT_TARGET") or "17.0")
     s["entry"] = meta.get("entry")
+    s["scene_adapter"] = meta.get("scene-adapter")
     s["features"] = meta.get("features", [])
     s["info"] = meta.get("info-plist", {})
     res = meta.get("resources")
@@ -94,6 +96,60 @@ def app_settings(manifest, crate_dir, fl):
         res = [r for r in ("assets",) if os.path.isdir(os.path.join(crate_dir, r))]
     s["resources"] = res
     return s
+
+
+def dep_versions(crate_dir, env, target):
+    """{package name: [versions]} of everything the crate builds with for the target"""
+    out = subprocess.run(["cargo", "metadata", "--format-version", "1", "--filter-platform", target],
+                         cwd=crate_dir, env=env, capture_output=True, text=True)
+    if out.returncode != 0:
+        die("cargo metadata failed: " + out.stderr.strip()[-800:])
+    import json
+    d = {}
+    for p in json.loads(out.stdout)["packages"]:
+        d.setdefault(p["name"], []).append((p["version"], os.path.dirname(p["manifest_path"])))
+    return d
+
+
+def tao_has_scenes(tao_dir):
+    """tao 0.37 and later define TaoSceneDelegate (src/platform_impl/ios/scene.rs)"""
+    f = os.path.join(tao_dir, "src/platform_impl/ios/scene.rs")
+    return os.path.isfile(f) and "TaoSceneDelegate" in open(f, errors="replace").read()
+
+
+def scene_manifest(delegate):
+    return {"UIApplicationSupportsMultipleScenes": False,
+            "UISceneConfigurations": {"UIWindowSceneSessionRoleApplication": [
+                {"UISceneConfigurationName": "Default Configuration", "UISceneDelegateClassName": delegate}]}}
+
+
+def scenes(s, crate_dir, env, target, target_dir):
+    """iOS 27 launches apps built with its SDK only with the scene life cycle. An app that names its own scene
+    delegate (info-plist UIApplicationSceneManifest) has it; tao 0.37+ (Tauri 2.12) has a scene delegate to name;
+    older tao (Dioxus 0.7) and winit before 0.31 (Bevy) make windows the old way: RustSceneAdapter (scene-adapter.m)
+    attaches them to the scene. Returns objects to link into the app."""
+    if "UIApplicationSceneManifest" in s["info"]:
+        return []
+    deps = dep_versions(crate_dir, env, target)
+    adapter = s.get("scene_adapter")
+    tao = deps.get("tao", [])
+    if adapter is None and tao and all(tao_has_scenes(d) for _, d in tao):
+        s["info"]["UIApplicationSceneManifest"] = scene_manifest("TaoSceneDelegate")
+        return []
+    old_winit = any(tuple(int(x) for x in v.split("-")[0].split(".")[:2]) < (0, 31) for v, _ in deps.get("winit", []))
+    if adapter is None:
+        adapter = old_winit or bool(tao)
+    if not adapter:
+        print("warning: no scene delegate (UIApplicationSceneManifest): iOS 27 refuses to launch an app built with "
+              "its SDK without the scene life cycle; name yours in [package.metadata.ios.info-plist] or set "
+              "scene-adapter = true", file=sys.stderr)
+        return []
+    obj = os.path.join(target_dir, target, f"rust-scene-adapter-{target}.o")
+    os.makedirs(os.path.dirname(obj), exist_ok=True)
+    run([env["CC_" + target.replace("-", "_")], "-fobjc-arc", "-c", os.path.join(HERE, "scene-adapter.m"), "-o", obj],
+        env, crate_dir)
+    s["info"]["UIApplicationSceneManifest"] = scene_manifest("RustSceneAdapter")
+    return [obj]
 
 
 def run(cmd, env, cwd):
@@ -178,17 +234,23 @@ def main():
         import tauri_ios as flavor_mod  # noqa: E402
         s = flavor_mod.prepare(s, crate_dir, env, target)
 
+    scene_objs = scenes(s, crate_dir, env, target, target_dir)
+    bin_name = a.bin or s["name"]
     if s["entry"]:
         # only the staticlib: a cdylib in the crate's crate-type would be linked too, and fail without the app's
         # other parts (Tauri's Swift library)
         cargo = ["cargo", "rustc", "--lib", "--crate-type", "staticlib", "--target", target]
+    elif scene_objs:
+        cargo = ["cargo", "rustc", "--bin", bin_name, "--target", target]
     else:
         cargo = ["cargo", "build", "--target", target]
     cargo += ["--release"] if a.release else []
     if s["features"]:
         cargo += ["--features", ",".join(s["features"])]
-    if not s["entry"] and a.bin:
+    if not s["entry"] and not scene_objs and a.bin:
         cargo += ["--bin", a.bin]
+    if not s["entry"] and scene_objs:
+        cargo += ["--"] + [x for o in scene_objs for x in ("-C", "link-arg=" + o)]
     run(cargo, env, crate_dir)
 
     out_dir = os.path.join(target_dir, target, profile)
@@ -202,7 +264,7 @@ def main():
         lib = os.path.join(out_dir, "lib" + lib_name.replace("-", "_") + ".a")
         if not os.path.isfile(lib):
             die(f"{lib} is missing: the crate needs crate-type = [\"staticlib\", ...] in [lib]")
-        extra = flavor_mod.link_args(s, crate_dir, env, target, a.release) if flavor_mod else []
+        extra = scene_objs + (flavor_mod.link_args(s, crate_dir, env, target, a.release) if flavor_mod else [])
         link_entry(lib, s["entry"], os.path.join(app_dir, exe), env, extra, target)
     else:
         built = os.path.join(out_dir, a.bin or s["name"])

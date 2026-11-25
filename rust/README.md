@@ -76,6 +76,15 @@ UISceneConfigurationName = "Default Configuration"
 UISceneDelegateClassName = "RustHelloSceneDelegate"
 ```
 
+Windowing libraries name or get one from `build.py` when the Info.plist has none:
+
+- tao 0.37 and later (Tauri 2.12) has a scene delegate: `TaoSceneDelegate` goes in the Info.plist.
+- Older tao (Dioxus 0.7 uses 0.34) and winit before 0.31 (Bevy 0.20 uses 0.30) make their windows the pre-scene way.
+  `build.py` links `scene-adapter.m` (compiled with clang here) and names its `RustSceneAdapter`: windows made before
+  the scene connects are attached to it when it does, later ones at once, and the scene's activation callbacks go on
+  to the app delegate's `applicationDidBecomeActive:` & co., which UIKit stops calling under scenes.
+  `scene-adapter = true | false` in `[package.metadata.ios]` overrides the choice.
+
 ## Tauri 2
 
 `tauri ios init | build` (tauri-cli's iOS commands, and the Xcode project they write) run only on macOS. `build.py`
