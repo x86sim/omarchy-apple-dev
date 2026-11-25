@@ -1,0 +1,30 @@
+[package]
+name = "hello-uikit"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# rust/build.sh reads this to make the .app
+[package.metadata.ios]
+bundle-id = "dev.omarchy.rust.HelloUIKit"
+display-name = "Rust Hello"
+
+# the scene life cycle (required for apps built with the iOS 27 SDK): UIKit makes the window's scene delegate by name
+[package.metadata.ios.info-plist.UIApplicationSceneManifest]
+UIApplicationSupportsMultipleScenes = false
+[[package.metadata.ios.info-plist.UIApplicationSceneManifest.UISceneConfigurations.UIWindowSceneSessionRoleApplication]]
+UISceneConfigurationName = "Default Configuration"
+UISceneDelegateClassName = "RustHelloSceneDelegate"
+
+[dependencies]
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSString", "NSObject", "NSDictionary", "NSGeometry"] }
+objc2-ui-kit = { version = "0.3", default-features = false, features = [
+    "std", "objc2-core-foundation",
+    "UIApplication", "UIResponder", "UIWindow", "UIView", "UIViewController", "UILabel", "UIButton", "UIControl",
+    "UIColor", "UIInterface", "NSText", "UIFont", "UIScene", "UIWindowScene", "UISceneDefinitions", "UISceneOptions", "UISceneSession",
+] }
+objc2-core-foundation = { version = "0.3", default-features = false, features = ["std", "CFCGTypes"] }
+
+[profile.release]
+strip = true
