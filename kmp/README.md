@@ -97,3 +97,36 @@ signs the framework in `Frameworks/` with the app.
 Compose Multiplatform checks `CADisableMinimumFrameDurationOnPhone` in the
 app's `Info.plist` at launch (`PlistSanityCheck`) and stops the app without
 it: keep it in the project's `Info.plist`, which the converter carries over.
+
+## One step: `kmp/build-app.sh`
+
+`kmp/build-app.sh` does the steps above in one command, for the simulator or a
+device: it links the framework (`--dynamic --xcframework`) only when a source
+of the Gradle build is newer than it (`KMP_FORCE=1` always links), copies it
+to `Frameworks/`, builds the app with `ship.sh --simulator` (or `--device`)
+and copies the Compose resources into the `.app`. The app's `xtool.env` says
+where the Gradle build is:
+
+```
+# <app>/xtool.env
+KMP_GRADLE_ROOT=..      # the Gradle root (has gradlew), relative to the app
+KMP_MODULE=:shared      # the module declaring binaries.framework
+KMP_FRAMEWORK=Shared    # the framework's base name
+```
+
+```
+cd iosApp
+../../omarchy-apple-dev/kmp/build-app.sh --simulator   # xtool/<App>.app for the iOS Simulator
+../../omarchy-apple-dev/kmp/build-app.sh --device      # for an iPhone; then xtool install
+```
+
+x86Sim's `x86sim dev build` / `dev run` take such a project as it is: an
+xtool project whose `xtool.env` sets `KMP_GRADLE_ROOT` is built with this
+script.
+
+Verified 2026-11-25 on x86_64 (Arch, JDK 27, Gradle 9.9.2, Kotlin 2.4.21,
+Compose Multiplatform 1.12.2, iPhoneSimulator 27.2 SDK): a Compose
+Multiplatform counter (x86Sim's `tests/dev/kmp/ComposeCounter`) linked for
+`ios_simulator_arm64`, built and run on an x86Sim iPhone 17 (iOS 27.2): its
+Compose UI in the accessibility snapshot, a tap on its button updating it.
+Nothing is needed from a Mac.
