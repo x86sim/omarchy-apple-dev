@@ -500,7 +500,8 @@ ALLOWED_ATTRS = {
               "userLabel",
               # React Native's template LaunchScreen labels
               "clipsSubviews", "minimumFontSize"},
-    "placeholder": {"placeholderIdentifier", "id", "userLabel", "customClass"},
+    "placeholder": {"placeholderIdentifier", "id", "userLabel", "customClass", "customModule",
+                    "customModuleProvider"},
     "tableViewCell": {"clipsSubviews", "contentMode",
                       "preservesSuperviewLayoutMargins", "selectionStyle",
                       "accessoryType", "indentationWidth", "reuseIdentifier",
@@ -1189,7 +1190,8 @@ def _parse_color_resources(doc, path):
 
 def _compile_xib_objects_element(doc, path):
     """The <objects> element of an iOS xib; refuse anything else."""
-    if doc.get("targetRuntime") != "iOS.CocoaTouch":
+    # iOS.CocoaTouch.iPad: an iPad-only document from before universal storyboards; same objects, same output
+    if doc.get("targetRuntime") not in ("iOS.CocoaTouch", "iOS.CocoaTouch.iPad"):
         raise XibError(f"{path}: targetRuntime {doc.get('targetRuntime')!r} is not iOS.CocoaTouch")
     objects = doc.find("objects")
     if objects is None:
@@ -1395,7 +1397,8 @@ def finalize(b, root):
     return N.encode(arch)
 
 
-SELF_TEST_NIBS = ("TinyView", "TinyLabel", "SettingsTableViewCell", "SettingsComboTableViewCell")
+SELF_TEST_NIBS = ("TinyView", "TinyLabel", "SettingsTableViewCell", "SettingsComboTableViewCell",
+                  "ChartsDemo/OwnerModule")
 
 
 def _bplist_bytes(plist, alias_entry_key=False):
@@ -4835,7 +4838,8 @@ def compile_storyboard(path, compilation_dir):
     is localized; the shipped app's bundle-root Settings/Inspector are not)."""
     tree = ET.parse(path)
     doc = tree.getroot()
-    if doc.get("targetRuntime") != "iOS.CocoaTouch":
+    # iOS.CocoaTouch.iPad: an iPad-only document from before universal storyboards; same objects, same output
+    if doc.get("targetRuntime") not in ("iOS.CocoaTouch", "iOS.CocoaTouch.iPad"):
         raise XibError(f"{path}: targetRuntime {doc.get('targetRuntime')!r} is not iOS.CocoaTouch")
     name = os.path.splitext(os.path.basename(path))[0]
     global LOCALIZE
@@ -5091,6 +5095,11 @@ SB_SELF_TEST = (
     ("React Native HelloWorld LaunchScreen.storyboardc",
      "HelloWorld/LaunchScreen.storyboard",
      "HelloWorld/LaunchScreen.storyboardc"),
+    # Shimmer's example (facebookarchive/Shimmer, BSD): an iPad-only document from Xcode 5
+    # (targetRuntime iOS.CocoaTouch.iPad). Golden from Xcode 27.2 (27B52).
+    ("Shimmer Logo Main_iPad.storyboardc",
+     "ShimmerLogo/Base.lproj/Main_iPad.storyboard",
+     "ShimmerLogo/Base.lproj/Main_iPad.storyboardc"),
 )
 # (label, source, golden nib, --minimum-deployment-target): one scene nib that
 # Apple's ibtool writes differently below iOS 17 (tests/ibtool/golden-pre17,
@@ -5134,8 +5143,8 @@ def self_test():
         src = os.path.join(SRC, f"{name}.xib")
         if not os.path.isfile(src):
             src = os.path.join(SRC, "NetNewsWire", f"{name}.xib")
-        # The NNW goldens were compiled with --module NetNewsWire, as Xcode does.
-        TARGET_MODULE = "NetNewsWire" if "/NetNewsWire/" in src else None
+        # The NNW goldens were compiled with --module NetNewsWire, as Xcode does; Module/Name: --module Module.
+        TARGET_MODULE = "NetNewsWire" if "/NetNewsWire/" in src else name.split("/")[0] if "/" in name else None
         out = compile_xib(src)
         want = open(os.path.join(GOLDEN, f"{name}.nib"), "rb").read()
         if out != want:
