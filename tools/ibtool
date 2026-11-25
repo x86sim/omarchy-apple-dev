@@ -43,6 +43,7 @@ SYSTEM_COLORS = {  # name -> built-in spec, preferred over document resources
     # synthesized table/clear colors (oracle: selectionStyle="none" cells)
     "tableCellPlainBackgroundColor": ("white", 1.0, 1.0),
     "clearColor": ("white", 0.0, 0.0),
+    "whiteColor": ("white", 1.0, 1.0),  # colorSpace="calibratedWhite" white 1 (dotnet new ios LaunchScreen)
     "systemBackgroundColor": ("white", 1.0, 1.0),
     "labelColor": ("white", 0.0, 1.0),
     # not in document resources (gold Inspector tableView background)
@@ -357,6 +358,11 @@ def build_color_el(b, el, where, resources, named):
         return build_rgb_color(b, el, where)
     if el.get("white") is not None and el.get("customColorSpace") == "calibratedWhite":
         return build_calibrated_white_color(b, el, where)
+    if (el.get("colorSpace") == "calibratedWhite" and el.get("customColorSpace") is None
+            and el.get("white") == "1" and el.get("alpha") == "1"):
+        # The older spelling (the LaunchScreen.storyboard of `dotnet new ios`): Apple's ibtool 27.2 compiles
+        # white 1 / alpha 1 to the cached system whiteColor, not to the RGB of the custom-space form
+        return build_color(b, "whiteColor", where)
     raise XibError(f"unsupported color element {el.attrib} ({where})")
 
 
@@ -5091,6 +5097,12 @@ SB_SELF_TEST = (
     ("React Native HelloWorld LaunchScreen.storyboardc",
      "HelloWorld/LaunchScreen.storyboard",
      "HelloWorld/LaunchScreen.storyboardc"),
+    # .NET for iOS's template LaunchScreen (dotnet new ios): a white background
+    # in the older colorSpace="calibratedWhite" spelling, which Apple compiles to
+    # the cached system whiteColor. Golden from Xcode 27.2 (27B52).
+    ("dotnet HelloNet LaunchScreen.storyboardc",
+     "HelloNet/LaunchScreen.storyboard",
+     "HelloNet/LaunchScreen.storyboardc"),
 )
 # (label, source, golden nib, --minimum-deployment-target): one scene nib that
 # Apple's ibtool writes differently below iOS 17 (tests/ibtool/golden-pre17,
