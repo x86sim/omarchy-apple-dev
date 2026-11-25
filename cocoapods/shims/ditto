@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Linux stand-in for macOS ditto (CocoaPods' "Copy generated compatibility header" phase): ditto SRC... DST copies a
+# file, or a directory's contents merged into DST, creating DST's parents. -V and resource-fork options are ignored.
+set -e
+args=()
+for a in "$@"; do
+  case "$a" in -V | -v | --rsrc | --norsrc | --extattr | --noextattr | --qtn | --noqtn | --acl | --noacl | --keepParent | -x | -c | -k) ;; *) args+=("$a") ;; esac
+done
+[ ${#args[@]} -ge 2 ] || { echo "usage: ditto SRC ... DST" >&2; exit 64; }
+dst=${args[-1]}
+unset 'args[-1]'
+for src in "${args[@]}"; do
+  if [ -d "$src" ]; then
+    mkdir -p "$dst"
+    cp -a "$src/." "$dst/"
+  elif [ -d "$dst" ]; then
+    cp -pL "$src" "$dst/"
+  else
+    mkdir -p "$(dirname "$dst")"
+    cp -pL "$src" "$dst"
+  fi
+done
