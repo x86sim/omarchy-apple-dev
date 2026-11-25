@@ -210,6 +210,16 @@ app around it builds as an xtool package with the framework as a binary
 target. Verified on x86_64 with a Compose Multiplatform app. Details:
 [kmp/README.md](kmp/README.md).
 
+## .NET for iOS apps
+
+`dotnet/setup.sh` installs a .NET SDK with the iOS workload, which Microsoft
+ships for macOS and Windows hosts only, and gives the workload's MSBuild tasks
+what they expect of a Mac (an Xcode.app made of the Darwin SDK, `xcrun`,
+`codesign`, two libSystem calls). `dotnet/build.sh` then builds a
+`net*-ios` project, compiled with NativeAOT: Mono's AOT compiler is
+macOS-only. Verified on x86_64 for the iOS Simulator. Details:
+[dotnet/README.md](dotnet/README.md).
+
 ## Flutter apps
 
 Verified on x86_64 with Flutter 3.47.6
@@ -328,6 +338,8 @@ Large projects need `ulimit -n 65536` before `xtool dev build`.
 - [flutter/README.md](flutter/README.md): the Flutter pipeline.
 - [kmp/README.md](kmp/README.md): the iOS framework of a Kotlin
   Multiplatform app, linked on Linux, and the app around it.
+- [dotnet/README.md](dotnet/README.md): .NET for iOS apps on Linux: the iOS
+  workload, its Mac parts and what stands in for them, NativeAOT.
 
 
 ## Notes

@@ -1,0 +1,114 @@
+#!/usr/bin/env bash
+# xcrun for the .NET iOS SDK's MSBuild tasks on Linux (dotnet/build.sh puts this directory first on the PATH).
+# Xcode's tools map to the Linux ones of the Darwin SDK install-toolchain.sh builds from the Xcode .xip:
+#   actool, ibtool       the SDK's actool and this repo's tools/ibtool; their text answer becomes the xml1 plist the
+#                        tasks parse (--output-format xml1)
+#   clang, clang++       Linux clang with an Apple -target (made from -arch and -m<os>-version-min) and the SDK
+#                        toolset's ld64.lld
+#   install_name_tool, lipo, strip, otool, nm, size, libtool   LLVM's (llvm-*)
+#   dsymutil, ld         the SDK toolset's
+#   codesign             ./codesign (ad-hoc, rcodesign)
+#   simctl list runtimes the simulator runtime of the SDK's version (x86Sim runs it)
+#   mdimport             nothing (Spotlight indexing)
+# --show-sdk-path / --show-sdk-version / --show-sdk-platform-path answer for -sdk <platform>.
+# XCRUN_LOG=<file> appends every call to it.
+set -u
+here=$(dirname "$(readlink -f "$0")")
+oad=$(dirname "$(dirname "$here")")
+B="${DARWIN_BUNDLE:-${XDG_CONFIG_HOME:-$HOME/.config}/swiftpm/swift-sdks/darwin.artifactbundle}"
+[ -n "${XCRUN_LOG:-}" ] && echo "xcrun $*" >>"$XCRUN_LOG"
+
+platform_of() {
+  case "$1" in
+  iphonesimulator*) echo iPhoneSimulator ;; iphoneos*) echo iPhoneOS ;;
+  appletvsimulator*) echo AppleTVSimulator ;; appletvos*) echo AppleTVOS ;;
+  watchsimulator*) echo WatchSimulator ;; watchos*) echo WatchOS ;;
+  xrsimulator*) echo XRSimulator ;; xros*) echo XROS ;; *) echo MacOSX ;;
+  esac
+}
+sdk_version() {
+  python3 -I -c 'import plistlib,sys; print(plistlib.load(open(sys.argv[1],"rb"))["Version"])' \
+    "$B/Developer/Platforms/$1.platform/Developer/SDKs/$1.sdk/SDKSettings.plist"
+}
+
+sdk=iphoneos
+while [ $# -gt 0 ]; do
+  case "$1" in
+  -sdk | --sdk) sdk=$2; shift 2 ;;
+  -r | --run | -l | --log | -n | --no-cache | -v | --verbose) shift ;;
+  -f | --find) command -v "$2"; exit ;;
+  --show-sdk-path | --show-sdk-version | --show-sdk-platform-path)
+    plat=$(platform_of "$sdk")
+    case "$1" in
+    --show-sdk-path) echo "$B/Developer/Platforms/$plat.platform/Developer/SDKs/$plat.sdk" ;;
+    --show-sdk-platform-path) echo "$B/Developer/Platforms/$plat.platform" ;;
+    *) sdk_version "$plat" ;;
+    esac
+    exit 0
+    ;;
+  *) break ;;
+  esac
+done
+[ $# -gt 0 ] || { echo "usage: xcrun [-sdk SDK] tool [args]" >&2; exit 64; }
+tool=$1; shift
+dev="$B/Developer/Platforms/iPhoneOS.platform/Developer/usr/bin"
+
+case "$tool" in
+actool | ibtool)
+  t="$dev/$tool"
+  if [ "$tool" = ibtool ]; then
+    t="$oad/tools/ibtool"
+    # Xcode's ibtool takes the SDK's path; this one knows the platform from --target-device
+    args=()
+    while [ $# -gt 0 ]; do case "$1" in --sdk) shift 2 ;; *) args+=("$1"); shift ;; esac; done
+    set -- "${args[@]}"
+  fi
+  xml=0
+  for a in "$@"; do [ "$a" = xml1 ] && xml=1; done
+  [ "$xml" = 1 ] || exec "$t" "$@"
+  out=$("$t" "$@")
+  rc=$?
+  printf '%s\n' "$out" | python3 -I "$here/tool-xml1.py"
+  exit $rc
+  ;;
+clang | clang++ | cc | c++)
+  # clang on Linux needs an Apple -target: made from -arch and the -m<os>-version-min flag the tasks pass
+  arch="" os="" ver="" env="" has_target=0 args=()
+  while [ $# -gt 0 ]; do
+    case "$1" in
+    -arch) arch=$2; shift 2; continue ;;
+    -target | --target=*) has_target=1 ;;
+    -miphonesimulator-version-min=* | -mios-simulator-version-min=*) os=ios env=-simulator ver=${1#*=}; shift; continue ;;
+    -miphoneos-version-min=* | -mios-version-min=*) os=ios ver=${1#*=}; shift; continue ;;
+    -mappletvsimulator-version-min=* | -mtvos-simulator-version-min=*) os=tvos env=-simulator ver=${1#*=}; shift; continue ;;
+    -mappletvos-version-min=* | -mtvos-version-min=*) os=tvos ver=${1#*=}; shift; continue ;;
+    -mmacosx-version-min=* | -mmacos-version-min=*) os=macos ver=${1#*=}; shift; continue ;;
+    esac
+    args+=("$1"); shift
+  done
+  [ "$has_target" = 0 ] && [ -n "$os" ] && args=(-target "${arch:-arm64}-apple-$os$ver$env" "${args[@]}")
+  cc=clang
+  case "$tool" in clang++ | c++) cc=clang++ ;; esac
+  exec "$cc" -fuse-ld=lld --ld-path="$B/toolset/bin/ld64.lld" -Wno-unused-command-line-argument "${args[@]}"
+  ;;
+install_name_tool | lipo | strip | otool | nm | objdump | size)
+  t=llvm-${tool//_/-}
+  exec "$t" "$@"
+  ;;
+libtool) exec llvm-libtool-darwin "$@" ;;
+dsymutil) exec "$B/toolset/bin/dsymutil" "$@" ;;
+ld) exec "$B/toolset/bin/ld64.lld" "$@" ;;
+codesign) exec "$here/codesign" "$@" ;;
+mdimport) exit 0 ;;
+simctl)
+  # `simctl list runtimes -j --json-output=F`: the tasks look for a simulator runtime of the SDK's version
+  [ "${1:-}" = list ] || { echo "xcrun (linux): simctl $*: use x86sim (install, launch)" >&2; exit 72; }
+  v=$(sdk_version iPhoneSimulator)
+  json=$(printf '{"runtimes":[{"identifier":"com.apple.CoreSimulator.SimRuntime.iOS-%s","version":"%s","platform":"iOS","name":"iOS %s","isAvailable":true,"supportedArchitectures":["arm64"]}]}' "${v//./-}" "$v" "$v")
+  out=""
+  for a in "$@"; do case "$a" in --json-output=*) out=${a#*=} ;; esac; done
+  if [ -n "$out" ]; then printf '%s\n' "$json" >"$out"; else printf '%s\n' "$json"; fi
+  ;;
+momc | xcstringstool) exec "$dev/$tool" "$@" ;;
+*) echo "xcrun (linux): no $tool" >&2; exit 72 ;;
+esac

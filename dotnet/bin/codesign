@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# codesign for the .NET iOS SDK's MSBuild tasks on Linux: ad-hoc signatures (what a simulator build gets), through
+# rcodesign (install-toolchain.sh installs it). A device build is signed afterwards with your identity
+# (tools/sign-dev.sh, xtool install): see dotnet/README.md.
+#   codesign [-v] [--force] [--timestamp=none] --sign - [--entitlements F] PATH      codesign --verify PATH
+[ -n "${XCRUN_LOG:-}" ] && echo "codesign $*" >>"$XCRUN_LOG"
+command -v rcodesign >/dev/null || PATH=$PATH:$HOME/.local/bin:$HOME/.cargo/bin
+command -v rcodesign >/dev/null || { echo "codesign (linux): rcodesign not found (install-toolchain.sh)" >&2; exit 1; }
+ent="" path="" verify=0 sign=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+  -s | --sign)
+    sign=1
+    [ "$2" = - ] || { echo "codesign (linux): only ad-hoc signing (--sign -); sign a device build with tools/sign-dev.sh" >&2; exit 1; }
+    shift 2 ;;
+  --entitlements) ent=$2; shift 2 ;;
+  -f | --force | --strict | --deep | --timestamp | --timestamp=* | --generate-entitlement-der | --preserve-metadata=*) shift ;;
+  -v | --verify | --verbose | -vv | -vvv | -vvvv) verify=1; shift ;;
+  -*) echo "codesign (linux): unsupported option $1" >&2; exit 1 ;;
+  *) path=$1; shift ;;
+  esac
+done
+[ -n "$path" ] || { echo "codesign (linux): no path" >&2; exit 1; }
+if [ "$sign" = 0 ]; then
+  # -v alone is --verify (next to --sign it is --verbose): rcodesign checks the code directory hashes
+  [ "$verify" = 1 ] || { echo "codesign (linux): nothing to do" >&2; exit 1; }
+  [ -d "$path" ] && path="$path/$(python3 -I -c 'import plistlib,sys; print(plistlib.load(open(sys.argv[1],"rb"))["CFBundleExecutable"])' "$path/Info.plist")"
+  rcodesign verify "$path" >/dev/null 2>&1 || rcodesign print-signature-info "$path" 2>/dev/null | grep -q 'ADHOC'
+  exit
+fi
+exec rcodesign sign ${ent:+--entitlements-xml-file "$ent"} "$path"
