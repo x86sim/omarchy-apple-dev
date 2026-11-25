@@ -1,0 +1,13 @@
+[package]
+name = "dioxus-hello"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[package.metadata.ios]
+bundle-id = "dev.omarchy.rust.DioxusHello"
+display-name = "Dioxus Hello"
+
+[dependencies]
+# mobile: dioxus-desktop on tao + wry (WKWebView); no devtools (that is dx serve's hot-reload channel)
+dioxus = { version = "0.7", default-features = false, features = ["launch", "lib", "logger", "mobile"] }

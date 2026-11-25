@@ -8,6 +8,7 @@ Xcode lays one out. No Mac, no Xcode install, no `xcodebuild`.
 |-------|--------|--------|
 | Plain Rust (UIKit through objc2) | runs on an x86Sim phone, snapshot + tap checked | `samples/hello-uikit` |
 | Tauri 2 (tao + WKWebView) | runs on an x86Sim phone, snapshot + tap (a Rust command) checked | `samples/tauri-hello` |
+| Dioxus 0.7 mobile (tao + WKWebView) | runs on an x86Sim phone, snapshot + tap checked | `samples/dioxus-hello` |
 
 ## Setup
 
@@ -110,6 +111,16 @@ x86sim dev run path/to/app         # build, install and launch on an x86Sim phon
 
 Not covered yet: Tauri plugins with Swift code of their own (their `ios/` packages expect the project tauri-cli
 generates); plugins without Swift code work.
+
+## Dioxus mobile
+
+A Dioxus app with the `mobile` feature is a plain binary crate: `rust/build.py <crate dir>` (or `x86sim dev run`)
+builds it, no `dx`. Name and bundle id from `[package.metadata.ios]`, else `Dioxus.toml`
+(`application.name`, `bundle.identifier`). Leave out the `devtools` feature (on by default: `dx serve`'s hot-reload
+channel) for builds without `dx`.
+
+Not covered: `asset!()` files. `dx` collects them into the bundle; `build.py` copies only `resources` (default
+`assets/`), so an app that uses `asset!()` needs `dx bundle` for now.
 
 ## Devices
 
