@@ -1,0 +1,4 @@
+#!/bin/sh
+# macOS has /usr/bin/command (the shell builtin as a program); Ruby's `command -v ccache` (React Native's Podfile
+# helpers) runs it without a shell, so Linux needs it on PATH too.
+command "$@"

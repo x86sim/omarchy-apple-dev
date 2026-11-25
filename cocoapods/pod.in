@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# omarchy-apple-dev cocoapods wrapper (written by cocoapods/install.sh): CocoaPods in its own Ruby, with what Podfiles
+# expect of a Mac answered on Linux. OAD_DIR names the omarchy-apple-dev tree when it moved since the install.
+POD_HOME=@POD_HOME@
+fork=${OAD_DIR:-@FORK@}
+export GEM_HOME="$POD_HOME/gems" GEM_PATH="$POD_HOME/gems"
+unset RUBYLIB BUNDLE_GEMFILE
+export RUBYOPT="-r$fork/cocoapods/linux.rb"
+export NODE_OPTIONS="--require \"$fork/cocoapods/node-linux.js\"${NODE_OPTIONS:+ $NODE_OPTIONS}"
+# CocoaPods refuses to run without a UTF-8 locale
+case "${LANG:-}${LC_ALL:-}" in *UTF-8* | *utf8*) ;; *) export LANG=C.UTF-8 ;; esac
+# The Swift toolchain's clang (the shims call it) and the shims first
+tc=$(dirname "$(readlink -f "$(command -v swift 2>/dev/null || echo /usr/bin/swift)")")
+export PATH="$fork/cocoapods/shims:$fork/flutter/shims:$POD_HOME/gems/bin:$POD_HOME/ruby/bin:$tc:$PATH"
+exec "$POD_HOME/ruby/bin/ruby" "$POD_HOME/gems/bin/pod" "$@"

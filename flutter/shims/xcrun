@@ -10,12 +10,23 @@ SDKB=${DARWIN_SDK_BUNDLE:-${XDG_CONFIG_HOME:-$HOME/.config}/swiftpm/swift-sdks/d
 sdk_path() {
   case "$1" in
     iphonesimulator*) echo "$SDKB/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk" ;;
+    appletvsimulator*) echo "$SDKB/Developer/Platforms/AppleTVSimulator.platform/Developer/SDKs/AppleTVSimulator.sdk" ;;
+    appletvos*) echo "$SDKB/Developer/Platforms/AppleTVOS.platform/Developer/SDKs/AppleTVOS.sdk" ;;
+    watchsimulator*) echo "$SDKB/Developer/Platforms/WatchSimulator.platform/Developer/SDKs/WatchSimulator.sdk" ;;
+    watchos*) echo "$SDKB/Developer/Platforms/WatchOS.platform/Developer/SDKs/WatchOS.sdk" ;;
+    xrsimulator*) echo "$SDKB/Developer/Platforms/XRSimulator.platform/Developer/SDKs/XRSimulator.sdk" ;;
+    xros*) echo "$SDKB/Developer/Platforms/XROS.platform/Developer/SDKs/XROS.sdk" ;;
     macosx*) echo "$SDKB/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk" ;;
     *) echo "$SDKB/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS.sdk" ;;
   esac
 }
 
 sdk=iphoneos
+# Inside a build (Xcode sets SDKROOT to the SDK's path or name) xcrun follows it
+case "${SDKROOT:-}" in
+  /*) sdk=$(basename "$SDKROOT" .sdk | tr 'A-Z' 'a-z' | sed 's/[0-9.]*$//') ;;
+  ?*) sdk=$SDKROOT ;;
+esac
 args=()
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -38,8 +49,36 @@ done
 
 tool=${args[0]}
 rest=("${args[@]:1}")
+
+# Apple's clang targets the SDK xcrun picked; the Linux one targets Linux. Without -target / -isysroot in the
+# arguments (`xcrun --sdk macosx clang -dynamiclib ...` in CocoaPods hooks), give the SDK's own.
+darwin_target() {
+  local a arch=arm64 os prev=
+  for a in "$@"; do
+    case "$a" in -target | --target | --target=* | -target=*) return 1 ;; esac
+    [ "$prev" = -arch ] && arch=$a
+    prev=$a
+  done
+  case "$sdk" in
+    iphonesimulator*) os=ios-simulator ;;
+    iphoneos*) os=ios ;;
+    appletvsimulator*) os=tvos-simulator ;;
+    appletvos*) os=tvos ;;
+    watchsimulator*) os=watchos-simulator ;;
+    watchos*) os=watchos ;;
+    xrsimulator*) os=xros-simulator ;;
+    xros*) os=xros ;;
+    *) os=macos ;;
+  esac
+  echo "$arch-apple-$os"
+}
+
 case "$tool" in
-  clang | clang++ | cc) exec "$here/clang-darwin.d/clang" "${rest[@]}" ;;
+  clang | clang++ | cc)
+    extra=()
+    if t=$(darwin_target "${rest[@]}"); then extra+=(-target "$t"); fi
+    case " ${rest[*]} " in *" -isysroot "*) ;; *) extra+=(-isysroot "$(sdk_path "$sdk")") ;; esac
+    exec "$here/clang-darwin.d/clang" "${extra[@]}" "${rest[@]}" ;;
   codesign) exit 0 ;;
   *)
     if [ -x "$here/$tool" ]; then exec "$here/$tool" "${rest[@]}"; fi
