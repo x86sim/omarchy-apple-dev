@@ -173,7 +173,7 @@ the certificate, the app is signed ad hoc and is not notarized for distribution.
 
 A toolchain swap changes Swift's path. Pairing, auth and the SDK cache are
 stored outside that toolchain: USB pairing in `~/.pymobiledevice3/` (plus
-`/var/lib/lockdown` records), Apple ID auth in `~/.local/share/xtool/`, and
+`/var/lib/lockdown` records), Apple ID auth in `~/.config/xtool/data/`, and
 the SDK in `~/.cache/xtool/darwin-iPhoneOS<ver>.xtoolsdk`. Re-register a
 current SDK cache into the new toolchain:
 

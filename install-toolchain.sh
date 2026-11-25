@@ -343,8 +343,9 @@ survive_status() {
   else
     echo "pairing: no records yet (plug the iPhone once; nothing is lost here by a swap)"
   fi
-  if [ -n "$(ls -A "$HOME/.local/share/xtool" 2>/dev/null)" ]; then
-    echo "auth: present at $HOME/.local/share/xtool"
+  # xtool keeps its sign-in in ~/.config/xtool/data (XTLAuthToken); older builds used ~/.local/share/xtool
+  if [ -e "${XDG_CONFIG_HOME:-$HOME/.config}/xtool/data/XTLAuthToken" ] || [ -n "$(ls -A "$HOME/.local/share/xtool" 2>/dev/null)" ]; then
+    echo "auth: present (xtool auth status)"
   else
     echo "auth: missing — run: $HOME/.local/bin/xtool auth"
   fi
