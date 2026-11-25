@@ -864,6 +864,10 @@ class Gen:
                 env[k] = s.get(k)
         for k in ("PATH",):
             env.pop(k, None)
+        # React Native's hermesc path is the macOS build in the hermes-compiler package; it ships a Linux one too
+        hc = env.get("HERMES_CLI_PATH", "")
+        if "/osx-bin/" in hc and os.path.exists(hc.replace("/osx-bin/", "/linux64-bin/")):
+            env["HERMES_CLI_PATH"] = hc.replace("/osx-bin/", "/linux64-bin/")
         env.update({
             "PATH": os.pathsep.join(b.shims + [b.tc, os.environ.get("PATH", "/usr/bin:/bin")]),
             "NODE_OPTIONS": f'--require "{os.path.join(FORK, "cocoapods/node-linux.js")}"'
@@ -1311,9 +1315,20 @@ def resources(d):
         if ext == ".xcassets":
             catalogs.append(path)
         elif ext in (".storyboard", ".xib"):
-            out = os.path.join(out_dir, os.path.splitext(name)[0] + (".storyboardc" if ext == ".storyboard" else ".nib"))
-            r = subprocess.run([os.path.join(bindir, "ibtool"), "--compile", out, path, "--target-device", "iphone",
-                                "--minimum-deployment-target", d["min"] or "15.0"], capture_output=True, text=True)
+            ib = os.path.join(bindir, "ibtool")
+            common = ["--target-device", "iphone", "--target-device", "ipad", "--minimum-deployment-target", d["min"] or "15.0"]
+            if ext == ".storyboard":
+                # compile into a scratch directory, then link into the bundle (Xcode's two steps)
+                tmpd = os.path.join(d["ibtool_tmp"], lproj or "root")
+                os.makedirs(tmpd, exist_ok=True)
+                r = subprocess.run([ib] + common + [path, "--compilation-directory", tmpd], capture_output=True, text=True)
+                if r.returncode == 0:
+                    sbc = os.path.join(tmpd, os.path.splitext(name)[0] + ".storyboardc")
+                    r = subprocess.run([ib, "--target-device", "iphone", "--target-device", "ipad", "--link", out_dir, sbc],
+                                       capture_output=True, text=True)
+            else:
+                out = os.path.join(out_dir, os.path.splitext(name)[0] + ".nib")
+                r = subprocess.run([ib] + common + ["--compile", out, path], capture_output=True, text=True)
             if r.returncode != 0:
                 sys.stderr.write(f"xcbuild: warning: ibtool could not compile {name}; it is left out ({(r.stderr or r.stdout).strip()[-300:]})\n")
         elif ext == ".xcdatamodeld" or ext == ".xcdatamodel":
@@ -1333,6 +1348,12 @@ def resources(d):
         for fam in (d.get("family") or "1").replace(",", " ").split():
             cmd += ["--target-device", {"1": "iphone", "2": "ipad", "3": "tv", "4": "watch", "7": "vision"}.get(fam, "iphone")]
         r = subprocess.run(cmd + catalogs, capture_output=True, text=True)
+        if r.returncode != 0 and d.get("appicon"):
+            # Xcode warns about an app icon set with empty slots (React Native's template) and goes on
+            sys.stderr.write(f"xcbuild: warning: actool refused the app icon {d['appicon']} ({(r.stderr or r.stdout).strip()[-200:]}); building the catalogs without it\n")
+            i = cmd.index("--app-icon")
+            del cmd[i : i + 2]
+            r = subprocess.run(cmd + catalogs, capture_output=True, text=True)
         if r.returncode != 0:
             sys.stderr.write(r.stdout + r.stderr)
             die("actool failed for " + ", ".join(catalogs))
