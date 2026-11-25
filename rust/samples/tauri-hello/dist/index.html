@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tauri Hello</title>
+  <style>
+    body { font-family: -apple-system, system-ui, sans-serif; text-align: center; padding: 80px 20px; }
+    button { font-size: 20px; padding: 10px 28px; }
+  </style>
+</head>
+<body>
+  <h1>Tauri on x86Sim</h1>
+  <p>A Tauri 2 app built on Linux.</p>
+  <button id="greet">Greet</button>
+  <p id="out"></p>
+  <script>
+    // the Rust command (src-tauri/src/lib.rs) answers through Tauri's IPC
+    document.getElementById("greet").addEventListener("click", async () => {
+      const out = document.getElementById("out");
+      try {
+        out.textContent = await window.__TAURI__.core.invoke("greet", { name: "x86Sim" });
+      } catch (e) {
+        out.textContent = "error: " + e;
+      }
+    });
+  </script>
+</body>
+</html>

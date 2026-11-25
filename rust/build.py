@@ -105,12 +105,12 @@ def run(cmd, env, cwd):
 
 def link_entry(lib, entry, out, env, extra, target):
     """A library app (Bevy's #[bevy_main], Tauri's mobile_entry_point): main() calls the crate's entry function"""
-    main_c = out + "-main.c"
+    main_c = os.path.join(os.path.dirname(lib), f"ios-main-{entry}.c")
     with open(main_c, "w") as f:
         f.write(f"extern void {entry}(void);\nint main(int argc, char **argv) {{ (void)argc; (void)argv; {entry}(); return 0; }}\n")
     cc = env["CC_" + target.replace("-", "_")]
     cmd = [cc, main_c, lib, "-o", out, "-lobjc", "-lc++", "-Wl,-dead_strip", "-framework", "Foundation", "-framework", "UIKit"] + extra
-    run(cmd, env, os.path.dirname(out))
+    run(cmd, env, os.path.dirname(lib))
 
 
 def info_plist(s, exe, sim, sdk):
@@ -178,12 +178,16 @@ def main():
         import tauri_ios as flavor_mod  # noqa: E402
         s = flavor_mod.prepare(s, crate_dir, env, target)
 
-    cargo = ["cargo", "build", "--target", target] + (["--release"] if a.release else [])
+    if s["entry"]:
+        # only the staticlib: a cdylib in the crate's crate-type would be linked too, and fail without the app's
+        # other parts (Tauri's Swift library)
+        cargo = ["cargo", "rustc", "--lib", "--crate-type", "staticlib", "--target", target]
+    else:
+        cargo = ["cargo", "build", "--target", target]
+    cargo += ["--release"] if a.release else []
     if s["features"]:
         cargo += ["--features", ",".join(s["features"])]
-    if s["entry"]:
-        cargo += ["--lib"]
-    elif a.bin:
+    if not s["entry"] and a.bin:
         cargo += ["--bin", a.bin]
     run(cargo, env, crate_dir)
 

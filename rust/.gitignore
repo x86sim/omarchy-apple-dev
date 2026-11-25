@@ -1,1 +1,3 @@
 samples/*/target/
+samples/*/src-tauri/target/
+samples/*/src-tauri/gen/

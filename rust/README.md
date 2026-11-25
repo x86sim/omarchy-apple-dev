@@ -7,6 +7,7 @@ Xcode lays one out. No Mac, no Xcode install, no `xcodebuild`.
 | Setup | Status | Sample |
 |-------|--------|--------|
 | Plain Rust (UIKit through objc2) | runs on an x86Sim phone, snapshot + tap checked | `samples/hello-uikit` |
+| Tauri 2 (tao + WKWebView) | runs on an x86Sim phone, snapshot + tap (a Rust command) checked | `samples/tauri-hello` |
 
 ## Setup
 
@@ -74,6 +75,32 @@ UIApplicationSupportsMultipleScenes = false
 UISceneConfigurationName = "Default Configuration"
 UISceneDelegateClassName = "RustHelloSceneDelegate"
 ```
+
+## Tauri 2
+
+`tauri ios init | build` (tauri-cli's iOS commands, and the Xcode project they write) run only on macOS. `build.py`
+does what they do, directly:
+
+```
+rust/build.py path/to/app          # the folder with src-tauri/ (or src-tauri itself)
+x86sim dev run path/to/app         # build, install and launch on an x86Sim phone
+```
+
+- The app is the crate's library (Tauri's mobile layout, `crate-type = ["staticlib", "cdylib", "rlib"]`): cargo
+  builds its staticlib (`cargo rustc --crate-type staticlib`, so the cdylib is not linked), and a generated `main()`
+  calls `start_app` (`#[tauri::mobile_entry_point]`).
+- The frontend (`build.frontendDist`) is built into the binary with the `tauri/custom-protocol` feature, as
+  `tauri build` does. Build it first (`npm run build`, or whatever `beforeBuildCommand` says); `build.py` does not run
+  `beforeBuildCommand`. `TAURI_DEV=1` leaves the feature off, for a `devUrl` server the phone can reach.
+- tauri links its Swift half (the `Tauri` package in tauri's `mobile/ios-api`: plugin bridge, IPC, logging) only on a
+  Mac. Here it is built with Linux Swift (`swift build --swift-sdk darwin --triple arm64-apple-ios-simulator`, in
+  `<target dir>/tauri-ios-api`) and linked in with the Swift runtime's search paths.
+- Name and bundle id come from `tauri.conf.json` (`productName`, `identifier`); `[package.metadata.ios]` overrides.
+- The Info.plist names tao's scene delegate (`TaoSceneDelegate`), as Tauri's iOS template does: iOS 27 needs the
+  scene life cycle.
+
+Not covered yet: Tauri plugins with Swift code of their own (their `ios/` packages expect the project tauri-cli
+generates); plugins without Swift code work.
 
 ## Devices
 
