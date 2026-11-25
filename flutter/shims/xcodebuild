@@ -1,8 +1,15 @@
 #!/usr/bin/env bash
-# Flutter only asks this for the Xcode version.
-v=$(ls "$HOME"/.cache/xtool/darwin-*.xtoolsdk.version.plist 2>/dev/null | tail -n1)
-if [ -n "$v" ]; then
-  python3 -c 'import plistlib,sys; p=plistlib.load(open(sys.argv[1],"rb")); print("Xcode", p["CFBundleShortVersionString"]); print("Build version", p["ProductBuildVersion"])' "$v"
-else
-  echo "Xcode 27.0"; echo "Build version 27A266a"
-fi
+# xcodebuild on Linux. -version answers from the darwin SDK bundle (Flutter and React Native ask it); builds of a
+# workspace, a project or a Swift package (CocoaPods script phases build packages this way) go to tools/xcbuild.py.
+here=$(dirname "$(readlink -f "$0")")
+case " $* " in
+  *" -version "* | " " | "  ")
+    v=$(ls "$HOME"/.cache/xtool/darwin-*.xtoolsdk.version.plist 2>/dev/null | tail -n1)
+    if [ -n "$v" ]; then
+      python3 -c 'import plistlib,sys; p=plistlib.load(open(sys.argv[1],"rb")); print("Xcode", p["CFBundleShortVersionString"]); print("Build version", p["ProductBuildVersion"])' "$v"
+    else
+      echo "Xcode 27.0"; echo "Build version 27A266a"
+    fi
+    exit 0 ;;
+esac
+exec python3 "$here/../../tools/xcbuild.py" "$@"

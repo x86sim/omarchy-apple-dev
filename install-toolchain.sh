@@ -511,6 +511,13 @@ if [ "${1:-}" = "--curses-compat" ]; then
   exit 0
 fi
 
+# --cocoapods: only CocoaPods (React Native, Expo and Flutter plugins with a Podfile): a pinned portable Ruby and
+# CocoaPods in ~/.local/share/omarchy-apple-dev/cocoapods, `pod` in ~/.local/bin (cocoapods/README.md)
+if [ "${1:-}" = "--cocoapods" ]; then
+  bash "$(dirname "$0")/cocoapods/install.sh"
+  exit 0
+fi
+
 if [ "${1:-}" = "--repair" ]; then
   # Toolchain swapped out from under a working setup (mise, asdf, manual
   # reinstall): repair runs against whatever toolchain the current shell
@@ -753,6 +760,12 @@ fi
 swift sdk list   # must print: darwin
 install_darwin_tools
 install_oam
+
+echo "== 6b. CocoaPods (React Native, Expo, Flutter plugins with a Podfile) =="
+# User-local and pinned; OMARCHY_APPLE_COCOAPODS=0 skips it, --cocoapods installs it alone later
+if [ "${OMARCHY_APPLE_COCOAPODS:-1}" != 0 ]; then
+  bash "$(dirname "$0")/cocoapods/install.sh" || echo "WARNING: CocoaPods did not install; retry with $0 --cocoapods"
+fi
 
 # If an app that failed against an earlier or broken SDK still fails now, the
 # stale module cache is the cause: delete that project's .build directory (or

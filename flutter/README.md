@@ -130,7 +130,7 @@ laptop (i7-8650U).
 | Dart code to arm64 | `gen_snapshot_arm64`, shipped as a macOS binary only | The same compiler built from the Dart SDK at Flutter's pinned revision, hosted on Linux and targeting iOS (`patches/dart-ios-target-on-linux.patch`, one GN argument). Since Flutter 3.47 it writes the Mach-O dylib itself, so no Apple linker is involved. |
 | Assets, engine framework, native assets (`sqlite3`, `objective_c`, ...) | `flutter assemble` from an Xcode build phase | The same `flutter assemble release_ios_bundle_flutter_assets`, unmodified, with `shims/` first on PATH. |
 | `xcrun`, `xcodebuild`, `codesign`, `lipo`, `strip`, `otool`, `install_name_tool`, `dsymutil`, `ld` | Xcode | `shims/`: SDK queries answered from the darwin SDK bundle, tools forwarded to LLVM, `codesign` a no-op (xtool signs the finished app). |
-| Runner and plugins | Xcode project plus Swift packages | `tools/gen-shell-package.py` writes one SwiftPM package from `.flutter-plugins-dependencies`; SwiftBuild compiles it against `Flutter.framework`. |
+| Runner and plugins | Xcode project plus Swift packages (or CocoaPods) | `tools/gen-shell-package.py` writes one SwiftPM package from `.flutter-plugins-dependencies`; SwiftBuild compiles it against `Flutter.framework`. Plugins with only a podspec: `tools/pod-plugins.py` (CocoaPods and xcbuild), linked into the same Runner. |
 | App extensions (widgets, share, ...) the Runner embeds | Xcode builds each extension target into `PlugIns/<name>.appex` | `tools/gen-extensions.py` reads the extension targets out of `Runner.xcodeproj` and writes a second SwiftPM package: one executable per extension, linked with the extension entry point `_NSExtensionMain` and its own `Info.plist`. `build.sh` compiles it, runs the extension's catalogs through `actool` and its string catalogs through `tools/xcstringstool`, and embeds every `PlugIns/<name>.appex`. Signing covers them: `sign-dev.sh` with a dev profile per extension bundle id (`provision-dev.py --bundle-id ...`), `ship.sh` with the App Store profiles `asc.py identity` already makes per extension. Extensions need packages of their own are not supported yet: their build fails on the unresolved imports. |
 | Icons | `actool` | This repo's Linux `actool`. |
 | Storyboards | `ibtool` | This repo's Linux `ibtool`. Flutter's two template storyboards compile byte-identical to Xcode's. |
@@ -154,8 +154,17 @@ laptop (i7-8650U).
 ## Limits
 
 - Release mode only: no debug build, no hot reload, no profile `gen_snapshot`.
-- Every plugin with native iOS code must ship a `Package.swift`; a
-  CocoaPods-only plugin stops the build with its name.
+- A plugin with native iOS code and no `Package.swift` (only a podspec) is
+  built with CocoaPods: `tools/pod-plugins.py` writes a Podfile with those
+  plugins and a local Flutter pod for the engine framework, runs `pod install`
+  without touching `Runner.xcodeproj`, builds the pods for iphoneos with
+  `../tools/xcbuild.py`, and the Runner link takes their libraries; their
+  resource bundles and vendored dynamic frameworks go into the app. It needs
+  `./install-toolchain.sh --cocoapods` ([../cocoapods/README.md](../cocoapods/README.md)).
+  Checked 2026-11-25 with Flutter 3.50.1 and `flutter_inappwebview` 6.1.5
+  (`flutter_inappwebview_ios`, Swift and ObjC, with the `OrderedSet` pod): the
+  pods build and the Runner links with the plugin; the whole `build.sh` was not
+  re-run for it (no Linux `gen_snapshot` of that Flutter on the test machine).
 - A storyboard edited beyond Flutter's template may use something the Linux
   ibtool does not compile yet; it stops with an `error:` line naming it.
 - Not tried: an App Store upload with `ship.sh` from this directory (the

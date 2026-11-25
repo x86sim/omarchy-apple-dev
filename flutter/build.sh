@@ -137,6 +137,10 @@ for d in "$@"; do defines+="${defines:+,}$(printf '%s' "$d" | base64 -w0)"; done
 
 echo "== 2. Native: Runner and plugins as one Swift package"
 python3 "$here/tools/gen-shell-package.py" "$app" "$shell_pkg" "$MIN_IOS"
+# Plugins with only a podspec: pod install and xcbuild (../cocoapods), linked into Runner below
+python3 "$here/tools/pod-plugins.py" "$app" "$shell_pkg" "$asm" >"$out/pod-plugins.json" 2>"$out/pod-plugins.log" ||
+  { tail -n 40 "$out/pod-plugins.log" >&2; exit 1; }
+mapfile -t podargs < <(python3 -c 'import json,sys; [print(a) for a in json.load(open(sys.argv[1]))["swift_args"]]' "$out/pod-plugins.json")
 # Swift autolinking adds a STRONG LC_LOAD_DYLIB for every framework a
 # package's sources import, regardless of the deployment target: a
 # dependency that imports SwiftUI (Sentry 9.x does) drags in SwiftUICore,
@@ -173,7 +177,7 @@ fi
 (cd "$shell_pkg" && swift build --configuration release --build-system swiftbuild \
   --triple "arm64-apple-ios$MIN_IOS" --toolset "$sdkb/toolset-swb.json" --product Runner \
   -Xswiftc "-F$asm" -Xcc "-F$asm" -Xlinker "-F$asm" -Xlinker -framework -Xlinker Flutter \
-  "${natargs[@]+"${natargs[@]}"}" \
+  "${natargs[@]+"${natargs[@]}"}" "${podargs[@]+"${podargs[@]}"}" \
   -Xlinker -rpath -Xlinker @executable_path/Frameworks \
   -Xlinker -platform_version -Xlinker ios -Xlinker "$MIN_IOS" -Xlinker "$sdk_version") \
   >"$out/shell-build.log" 2>&1 || { grep -E 'error' "$out/shell-build.log" | head -n 40 >&2; exit 1; }
@@ -245,6 +249,11 @@ for b in "$products"/*.bundle; do [ ! -d "$b" ] || cp -R "$b" "$bundle/"; done
 find "$products" -maxdepth 1 -name '*.dylib' -exec cp {} "$bundle/Frameworks/" \;
 cp -R "$asm/App.framework" "$asm/Flutter.framework" "$bundle/Frameworks/"
 for f in "$asm"/native_assets/*.framework; do [ ! -d "$f" ] || cp -R "$f" "$bundle/Frameworks/"; done
+# what the CocoaPods plugins bring: vendored dynamic frameworks and resource bundles
+python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); [print("F" + p) for p in d["embed"]]; [print("B" + p) for p in d["bundles"]]' \
+  "$out/pod-plugins.json" | while IFS= read -r l; do
+  case $l in F*) cp -RL "${l#F}" "$bundle/Frameworks/" ;; B*) cp -RL "${l#B}" "$bundle/" ;; esac
+done
 for _ in $(seq 1 64); do  # ponytail: fixed 64-iteration cap; products are finite so the loop exits on its own first
   before=$(find "$bundle/Frameworks" -maxdepth 1 | wc -l)
   {

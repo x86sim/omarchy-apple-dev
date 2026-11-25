@@ -214,8 +214,8 @@ target. Verified on x86_64 with a Compose Multiplatform app. Details:
 
 Verified on x86_64 with Flutter 3.47.6
 ([receipt](receipts/2026-10-08-flutter-signed-ipa.md)). Release mode, arm64
-device builds only: no debug, hot reload or simulator. Plugins must ship a
-`Package.swift`. aarch64 hosts are untested. Details:
+device builds only: no debug, hot reload or simulator. Plugins with only a
+podspec are built with CocoaPods (`./install-toolchain.sh --cocoapods`). aarch64 hosts are untested. Details:
 [flutter/README.md](flutter/README.md).
 
 ```
@@ -241,6 +241,12 @@ the build pipeline ([#7](https://github.com/joshuaswarren/omarchy-apple-dev/pull
 the Linux `ibtool` for Flutter's storyboards
 ([#8](https://github.com/joshuaswarren/omarchy-apple-dev/pull/8)) and plugin
 package support ([#9](https://github.com/joshuaswarren/omarchy-apple-dev/pull/9)).
+
+## CocoaPods, React Native and Expo
+
+`./install-toolchain.sh --cocoapods` installs a pinned, user-local Ruby and CocoaPods; `pod install` then runs on
+Linux, with what Podfiles ask of a Mac (xcrun, `xcodebuild -version`, plutil) answered by Linux stand-ins. Details:
+[cocoapods/README.md](cocoapods/README.md).
 
 ## Ship to TestFlight and the App Store
 
@@ -295,7 +301,7 @@ Large projects need `ulimit -n 65536` before `xtool dev build`.
 ## Scripts
 
 - `install-toolchain.sh`: toolchain and SDK install. `--repair`,
-  `--user-only`, `--curses-compat`.
+  `--user-only`, `--curses-compat`, `--cocoapods`.
 - `device-run.sh`: pair, install, launch, LLDB, console, crash pull; `--rsd`
   and `--over-tailnet` for tunnel installs.
 - `ship.sh`: App Store `.ipa`, offline validation, `--upload`. Helpers:

@@ -6,6 +6,11 @@
 Reads the plugin list Flutter writes to .flutter-plugins-dependencies and each
 plugin's own Package.swift. The app's Swift sources and plugin registrant are
 copied in; the bridging header becomes an `import PluginRegistrant`.
+
+A plugin with only a podspec (no Package.swift) is listed in <output>/pods.json
+instead: tools/pod-plugins.py builds those with CocoaPods and xcbuild, and the
+registrant gets their headers from <output>/pods (Pods/Headers/Public and the
+Swift compatibility headers of the build).
 """
 import json
 import os
@@ -18,6 +23,7 @@ runner = os.path.join(app, "ios", "Runner")
 deps = json.load(open(os.path.join(app, ".flutter-plugins-dependencies")))
 
 plugins = []
+pod_plugins = []
 for p in deps["plugins"]["ios"]:
     if not p.get("native_build", True) or p.get("dev_dependency"):
         continue
@@ -28,7 +34,12 @@ for p in deps["plugins"]["ios"]:
         None,
     )
     if pkg is None:
-        sys.exit(f"{name}: no ios/ or darwin/ Package.swift; this plugin needs CocoaPods")
+        podspec = next((os.path.join(root, d) for d in ("ios", "darwin")
+                        if os.path.isfile(os.path.join(root, d, name + ".podspec"))), None)
+        if podspec is None:
+            sys.exit(f"{name}: no ios/ or darwin/ Package.swift or {name}.podspec")
+        pod_plugins.append({"name": name, "path": podspec})
+        continue
     manifest = open(os.path.join(pkg, "Package.swift")).read()
     library = re.search(r'\.library\(\s*name:\s*"([^"]+)"', manifest)
     if library is None:
@@ -51,7 +62,7 @@ shutil.copy(os.path.join(runner, "GeneratedPluginRegistrant.h"), os.path.join(sr
 
 # Keep only the plugins this build links: dev dependencies are registered in
 # the generated file but are not part of a release app.
-kept = {name for name, _, _ in plugins}
+kept = {name for name, _, _ in plugins} | {p["name"] for p in pod_plugins}
 registrant = open(os.path.join(runner, "GeneratedPluginRegistrant.m")).read()
 def drop_block(m):
     return m.group(0) if m.group(1) in kept else ""
@@ -135,6 +146,20 @@ for name, pkg, product in plugins:
     local.append((name, dest, product))
 plugins = local
 
+# CocoaPods-only plugins: built by tools/pod-plugins.py into <out>/pods; the registrant reads their headers there
+json.dump({"plugins": pod_plugins, "min_ios": min_ios}, open(os.path.join(out, "pods.json"), "w"), indent=1)
+pods_dir = os.path.join(out, "pods")
+products_dir = os.path.join(pods_dir, "build/xcbuild/Build/Products/Release-iphoneos")
+reg_flags = []
+if pod_plugins:
+    reg_flags = ["-I", os.path.join(pods_dir, "Pods/Headers/Public"), "-fmodules"]
+    for p in pod_plugins:
+        reg_flags += ["-I", os.path.join(pods_dir, "Pods/Headers/Public", p["name"]),
+                      "-I", os.path.join(products_dir, p["name"], "Swift Compatibility Header"),
+                      "-fmodule-map-file=" + os.path.join(products_dir, p["name"], p["name"] + ".modulemap")]
+reg_settings = f"""
+      cSettings: [.unsafeFlags({json.dumps(reg_flags)})],""" if reg_flags else ""
+
 dep_lines = "\n".join(f'    .package(path: "Packages/{os.path.basename(pkg)}"),' for _, pkg, _ in plugins)
 prod_lines = "\n".join(
     f'        .product(name: "{product}", package: "{os.path.basename(pkg)}"),' for _, pkg, product in plugins
@@ -154,7 +179,7 @@ let package = Package(
       name: "PluginRegistrant",
       dependencies: [
 {prod_lines}
-      ]
+      ],{reg_settings}
     ),
     .executableTarget(
       name: "Runner",
@@ -164,4 +189,5 @@ let package = Package(
   ]
 )
 """)
-print(f"shell package: {len(plugins)} plugins: {', '.join(n for n, _, _ in plugins)}")
+print(f"shell package: {len(plugins)} plugins: {', '.join(n for n, _, _ in plugins)}"
+      + (f"; CocoaPods plugins: {', '.join(p['name'] for p in pod_plugins)}" if pod_plugins else ""))
