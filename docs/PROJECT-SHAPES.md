@@ -127,6 +127,34 @@ What differs from a Mac:
 Sample: [shells/samples/godot-hello](../shells/samples/godot-hello) (a label and a button; Godot draws its own UI, so
 x86Sim's check reads it by OCR).
 
+### Unity 6.3 (IL2CPP)
+
+**Builds, runs.** Unity 6000.3.29f1 LTS for Linux with its iOS Build Support module exports an iOS Xcode project in
+batchmode ([shells/unity/build.sh](../shells/unity/build.sh), with
+[X86SimBuild.cs](../shells/unity/X86SimBuild.cs): the build settings' scenes, IL2CPP, arm64 simulator or devices).
+Both come from Unity's CLI without an account (`unity install 6000.3.29f1 -m ios --accept-eula`, 4.9 GB); the editor
+needs an activated license, and Unity activates a Personal license only after a browser sign-in (`unity auth login`:
+a URL to approve; `unity license activate --personal`). Username / password batchmode activation is for paid
+licenses; service accounts cannot activate.
+
+The exported project assumes a Mac in three places, which
+[fix-project.py](../shells/unity/fix-project.py) changes:
+
+- **IL2CPP runs at build time** (the GameAssembly target's script phase) from `Il2CppOutputProject/IL2CPP/build/
+  deploy_<arch>`, which the export fills with IL2CPP for macOS (Mach-O). The Linux editor carries the same IL2CPP
+  built for Linux, with its iOS toolchain: `deploy_<uname -m>` links to it. It compiles the game's C++ (466 steps for
+  the sample) with the build's clang and the SDK.
+- **`libtool -static`** archives the result: Linux has none, so the script phase gets a toolchain overlay with
+  [libtool](../shells/unity/libtool) (`llvm-ar` with a Darwin symbol table).
+- **"Check Unity Framework ABI"** runs `nm -arch`: GNU nm has no `-arch`, every symbol looked missing; on Linux
+  `llvm-nm`. The phase declares no inputs, so Swift Build could run it before UnityFramework was linked: the
+  framework binary becomes its input.
+
+The app builds with Swift Build for the arm64 simulator (no device conversion needed). On x86Sim the game runs and
+its uGUI controls are read through IL2CPP (x86Sim's Unity reader; x86Sim's `tests/ax/games_e2e.py` unity check: elements,
+tap, typing). Sample: [shells/samples/unity-hello](../shells/samples/unity-hello) (a button, a score, an input
+field, built at run time by `Game.cs`).
+
 ## React Native on Swift Build (in progress)
 
 A React Native 0.88.1 app with Stripe (0.85, Swift packages, dynamic frameworks as Stripe requires), Skia 2.14,

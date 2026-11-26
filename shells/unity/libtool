@@ -1,0 +1,55 @@
+#!/usr/bin/env python3
+"""Apple's `libtool -static` for Linux, as IL2CPP's iOS build calls it to archive the game's objects:
+  libtool [-static] [-arch_only ARCH] [-no_warning_for_no_symbols] [-filelist LIST[,DIR]] -o OUT [FILE...]
+-> llvm-ar (the Swift toolchain's, else PATH's) writes OUT with a Darwin symbol table. Only static archives."""
+import os
+import shutil
+import subprocess
+import sys
+
+
+def main(argv):
+    out, files, i = None, [], 0
+    while i < len(argv):
+        a = argv[i]
+        if a in ("-static", "-no_warning_for_no_symbols", "-s", "-a", "-c", "-D", "-q"):
+            pass
+        elif a == "-arch_only":
+            i += 1
+        elif a == "-o":
+            i += 1
+            out = argv[i]
+        elif a == "-filelist":
+            i += 1
+            lst, _, base = argv[i].partition(",")
+            for line in open(lst):
+                line = line.strip()
+                if line:
+                    files.append(os.path.join(base, line) if base else line)
+        elif a == "-dynamic":
+            sys.exit("libtool (Linux stand-in): only -static archives")
+        elif a.startswith("-"):
+            pass
+        else:
+            files.append(a)
+        i += 1
+    if not out:
+        sys.exit("libtool (Linux stand-in): no -o")
+    here = os.path.dirname(os.path.abspath(__file__))
+    ar = next((p for p in (os.path.join(here, "llvm-ar"), "/usr/lib/swift/usr/bin/llvm-ar", shutil.which("llvm-ar") or "")
+               if p and os.access(p, os.X_OK)), None)
+    if not ar:
+        sys.exit("libtool (Linux stand-in): llvm-ar not found")
+    if os.path.exists(out):
+        os.remove(out)
+    rsp = out + ".rsp"
+    with open(rsp, "w") as f:
+        f.write("\n".join('"%s"' % p for p in files))
+    try:
+        return subprocess.call([ar, "crs", "--format=darwin", out, "@" + rsp])
+    finally:
+        os.remove(rsp)
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

@@ -10,6 +10,7 @@ CLIs run on Linux; the Xcode project they write then builds with Swift Build ([s
 | Capacitor 8 (Ionic) | `npm run build` (when the app has one), `npx cap add ios` once, then `npx cap sync ios` | `ios/App` (`App.xcodeproj`, Capacitor and plugins as Swift packages) | [samples/capacitor-hello](samples/capacitor-hello), [samples/ionic-hello](samples/ionic-hello) |
 | NativeScript 9 | [nativescript/ns](nativescript/ns) `prepare ios`: the CLI with its macOS gates lifted, then the Linux metadata generator put in | `platforms/ios` (`<app>.xcodeproj`, the runtime as a Swift package) | [samples/nativescript-hello](samples/nativescript-hello) |
 | Godot 4.7 | [godot/export.sh](godot/export.sh): Godot's Linux editor, headless, with its iOS template ("export project only") | `build/godot-ios` (`<name>.xcodeproj`, the engine as a static xcframework); build for iOS devices | [samples/godot-hello](samples/godot-hello) |
+| Unity 6.3 (IL2CPP) | [unity/build.sh](unity/build.sh): the Unity editor for Linux, batchmode, iOS Build Support; then [unity/fix-project.py](unity/fix-project.py) makes the IL2CPP build step run on Linux | `build/unity-ios` (`Unity-iPhone.xcodeproj`, arm64 simulator) | [samples/unity-hello](samples/unity-hello) |
 | Cordova (cordova-ios 8) | `cordova prepare ios` (adds the platform package.json lists, copies `www/`) | `platforms/ios` (`App.xcworkspace`, CordovaLib and plugins as Swift packages) | [samples/cordova-hello](samples/cordova-hello) |
 
 ```
