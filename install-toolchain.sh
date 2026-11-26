@@ -247,13 +247,15 @@ for platform_name in PLATFORMS:
             dp.setdefault("GENERATE_TEXT_BASED_STUBS", "NO")
             json.dump(d, open(p, "w"))
         p = os.path.join(sdks, sdk, "SDKSettings.plist")
-        d = plistlib.load(open(p, "rb")) if os.path.isfile(p) else {"DefaultProperties": {}}
+        raw = open(p, "rb").read() if os.path.isfile(p) else b""
+        d = plistlib.loads(raw) if raw else {"DefaultProperties": {}}
         dp = d.setdefault("DefaultProperties", {})
-        if dp.get("GENERATE_INTERMEDIATE_TEXT_BASED_STUBS") == "NO":
+        if dp.get("GENERATE_INTERMEDIATE_TEXT_BASED_STUBS") == "NO" and raw.startswith(b"bplist00"):
             continue
         dp["GENERATE_INTERMEDIATE_TEXT_BASED_STUBS"] = "NO"
         dp["GENERATE_TEXT_BASED_STUBS"] = "NO"
-        plistlib.dump(d, open(p + ".tmp", "wb"))
+        # binary, as Xcode ships it: sweetpad's settings catalog (xcodebuild -showBuildSettings) reads only that
+        plistlib.dump(d, open(p + ".tmp", "wb"), fmt=plistlib.FMT_BINARY)
         os.replace(p + ".tmp", p)
 # The CopyStrings task cannot re-encode strings outside Darwin:
 # FileTextEncoding.stringEncoding is `#if canImport(Darwin)`. Only the binary

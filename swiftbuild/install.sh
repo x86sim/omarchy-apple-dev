@@ -71,6 +71,25 @@ if [ -n "$bundle" ] && [ -d "$bundle/Developer" ]; then
     [ -n "$clangv" ] && ln -s "../clang/$(basename "$clangv")" "$tc/usr/lib/swift/clang"
   fi
 fi
+# sweetpad's build-settings catalog (xcodebuild -showBuildSettings: Carthage, fastlane, CI scripts) reads every SDK's
+# SDKSettings.plist as a binary plist, the format Xcode ships; bundles that install-toolchain.sh wrote before it kept
+# that format have XML ones, and every -showBuildSettings stopped at the first ("invalid binary plist"). Rewritten in
+# binary (Swift Build, xcrun and the fork's scripts read both).
+if [ -n "$bundle" ] && [ -d "$bundle/Developer/Platforms" ]; then
+  python3 -I - "$bundle" <<'PY'
+import glob, os, plistlib, sys
+for p in glob.glob(os.path.join(sys.argv[1], "Developer/Platforms/*.platform/Developer/SDKs/*.sdk/SDKSettings.plist")):
+    if os.path.islink(os.path.dirname(p)):
+        continue
+    raw = open(p, "rb").read()
+    if raw.startswith(b"bplist00"):
+        continue
+    with open(p + ".tmp", "wb") as f:
+        plistlib.dump(plistlib.loads(raw), f, fmt=plistlib.FMT_BINARY)
+    os.replace(p + ".tmp", p)
+    print("swiftbuild: %s now a binary plist" % os.path.relpath(p, sys.argv[1]))
+PY
+fi
 # The SDK's ibtool (install-toolchain.sh copies the fork's tools/ibtool into every platform) sends what it refuses to
 # sweetpad's ibtool; Swift Build runs it without our environment, so it finds sweetpad through a link next to it.
 # A copy older than this checkout's (no fallback) is replaced.
