@@ -10,6 +10,7 @@
 #   codesign             ./codesign (ad-hoc, rcodesign)
 #   simctl list runtimes the simulator runtime of the SDK's version (x86Sim runs it)
 #   mdimport             nothing (Spotlight indexing)
+#   derq                 derq.py: an entitlements plist in its DER form (the simulator executable's __ents_der)
 # --show-sdk-path / --show-sdk-version / --show-sdk-platform-path answer for -sdk <platform>.
 # XCRUN_LOG=<file> appends every call to it.
 set -u
@@ -100,6 +101,7 @@ dsymutil) exec "$B/toolset/bin/dsymutil" "$@" ;;
 ld) exec "$B/toolset/bin/ld64.lld" "$@" ;;
 codesign) exec "$here/codesign" "$@" ;;
 mdimport) exit 0 ;;
+derq) exec python3 -I "$here/derq.py" "$@" ;;
 simctl)
   # `simctl list runtimes -j --json-output=F`: the tasks look for a simulator runtime of the SDK's version
   [ "${1:-}" = list ] || { echo "xcrun (linux): simctl $*: use x86sim (install, launch)" >&2; exit 72; }

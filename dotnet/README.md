@@ -41,6 +41,7 @@ packages go to `~/.nuget/packages` as usual. Delete the directory to remove it.
 | `/usr/lib/libc.dylib`, `/usr/lib/libSystem.dylib` | The tasks P/Invoke them by path: `realpath` (FindItemWithLogicalName), `sysctlbyname("sysctl.proc_translated")` (the Rosetta check of ACTool), `stat$INODE64` (ComputeCodesignItems) | A .NET startup hook (`hook/StartupHook.cs`, `DOTNET_STARTUP_HOOKS`) resolves both paths to `hook/macshim.c`: glibc plus `sysctlbyname` (no such name) and `stat`/`lstat`/`fstat$INODE64`, filling macOS's 144-byte `struct stat` |
 | Xcode.app | "A valid Xcode installation was not found"; the custom linker checks `Contents/MacOS/Xcode` (MT0057); the SDK version pins the Xcode version | A directory: `Contents/Info.plist` and `version.plist` with the Darwin SDK's version, a `MacOS/Xcode` stub, `Contents/Developer/{Platforms,Toolchains}` linked to the Darwin SDK; `build.sh` passes it as `XcodeLocation` |
 | `xcrun` | actool, ibtool, clang, install_name_tool, simctl, mdimport, codesign, `--show-sdk-path` | `bin/xcrun`: the SDK's actool and this repo's `tools/ibtool` (their text answer turned into the `xml1` plist the tasks parse), Linux clang with an Apple `-target` made from `-arch` / `-m<os>-version-min` and the toolset's `ld64.lld`, LLVM's binutils, an iOS runtime list for `simctl list runtimes`, nothing for Spotlight's `mdimport` |
+| `derq` | A simulator executable embeds its entitlements in DER (`__ents_der`); MAUI's Release build asks for it | `bin/derq.py`: Apple's DER form of an entitlements plist (byte-identical to Apple's `derq` on the MAUI template's) |
 | `codesign` | Ad-hoc signing of the app and its dylibs | `bin/codesign`: `rcodesign sign` with the entitlements the tasks write |
 | Mono's AOT compiler | Every arm64 iOS target runs it, the simulator included (`_RunAotCompiler`). Microsoft publishes it (`Microsoft.NETCore.App.Runtime.AOT.osx-*.Cross.*`) for macOS hosts only | Not available. **NativeAOT** compiles the app instead: its compiler (ILCompiler) is published for Linux (`runtime.linux-x64.Microsoft.DotNet.ILCompiler`) and targets iOS. `build.sh` builds with `PublishAot=true` (and `_IsPublishing`, which is how the iOS SDK enables it) |
 
@@ -60,9 +61,40 @@ JIT (AOT turned off, the generated `main` set to `MONO_AOT_MODE_NONE`) aborts in
   `EnableCodeSigning=false`. Sign the `.app` with your identity
   (`tools/sign-dev.sh`) and install it (`xtool install`). Not yet verified on
   an iPhone.
-- **.NET MAUI** apps use the same workload plus the `maui-ios` workload. See
-  "MAUI" below for how far it got.
+- **.NET MAUI**: builds, see below. On an x86Sim phone it does not run yet.
 - iOS only. tvOS and Mac Catalyst workloads would take the same steps, but
   were not tried.
 - `ibtool` compiles the storyboards and xibs `tools/ibtool` supports (the
   template's `LaunchScreen.storyboard` included); others fail with its error.
+
+## .NET MAUI
+
+`dotnet workload install maui-ios` works in the SDK `setup.sh` set up (with
+`DOTNET_ROOT` set to it). `dotnet new maui` then builds for the simulator:
+
+```
+dotnet/build.sh --simulator -c Release . -- -p:TargetFrameworks=net10.0-ios -p:TargetFramework=net10.0-ios -p:IlcSingleThreaded=true
+```
+
+- `TargetFrameworks`: the template also targets Android and Mac Catalyst,
+  whose workloads are not installed.
+- The iOS 27 SDK refuses an app without the UIKit scene lifecycle (MT7199).
+  The template has none, so the change is the same as on a Mac: add a
+  `UIApplicationSceneManifest` to `Platforms/iOS/Info.plist` (configuration
+  `__MAUI_DEFAULT_SCENE_CONFIGURATION__`, delegate `SceneDelegate`) and
+  `[Register("SceneDelegate")] class SceneDelegate : MauiUISceneDelegate {}`.
+- Release: a Debug NativeAOT build of MAUI roots much more, and ILC ran out of
+  memory under a 6 GB cap. Release (full trimming, single-threaded ILC)
+  links in under a minute.
+- MAUI's own build steps run on Linux as they are: XAML compilation,
+  Resizetizer (SkiaSharp) for icons, images, fonts and the splash storyboard,
+  which `tools/ibtool` compiles (byte-identical to Apple's).
+
+Verified 2026-11-25: the template's app built on Linux runs on Apple's iOS
+27.2 simulator (checked on a Mac: its home page, "Hello, World!", "Click me").
+On an x86Sim phone it dies at launch (SIGSEGV). The cause is x86Sim's, not
+the build's: a NativeAOT app turns a null dereference into a
+`NullReferenceException` through its SIGSEGV handler, and on x86Sim such an
+app dies instead (a one-line `try { s!.Length } catch (NullReferenceException)`
+probe: "NRE caught" on Apple's simulator, killed on x86Sim). MAUI hits that
+path at startup.
