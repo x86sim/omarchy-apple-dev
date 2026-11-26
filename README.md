@@ -277,6 +277,12 @@ Tuist runs on macOS only; `tuist/install.sh` builds its manifest library (Projec
 `tuist/bin/tuist generate` evaluates Project.swift with it, as Tuist does, and writes the project with XcodeGen.
 Details: [tuist/README.md](tuist/README.md).
 
+## Bazel rules_apple
+
+Not yet: apple_support registers its Apple C and Swift toolchains for macOS hosts only, and apple_support, rules_swift
+and rules_apple run `/usr/bin/xcrun` and other macOS tools by absolute path. Where it stops and what a Linux path
+needs: [bazel/README.md](bazel/README.md).
+
 ## Ship to TestFlight and the App Store
 
 Once: create an App Store Connect API team key (role App Manager with access
