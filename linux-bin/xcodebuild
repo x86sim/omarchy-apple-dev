@@ -321,6 +321,17 @@ def build_with_retries(cmd, a, before=None):
             say("the Linux App Intents processor refused this project's App Intents (above); building without their "
                 "metadata (LM_SKIP_METADATA_EXTRACTION=YES): the app runs, its App Shortcuts are not registered")
             more.append("LM_SKIP_METADATA_EXTRACTION=YES")
+        # a Clang module a Swift package builds (Stripe3DS2), needed by importers of the package's Swift modules
+        # further down the graph: Xcode finds its generated module map there, Swift Build only for direct dependents
+        mods = sorted(set(re.findall(r"missing required module '([A-Za-z0-9_]+)'", diags)))
+        maps = [f"-Xcc -fmodule-map-file=$(OBJROOT)/GeneratedModuleMaps-$(PLATFORM_NAME)/{m}.modulemap" for m in mods]
+        have = next((x for x in extra if x.startswith("OTHER_SWIFT_FLAGS=")), "")
+        maps = [x for x in maps if x not in have]
+        if maps:
+            say("passing the module maps of package Clang modules to their transitive importers: " + ", ".join(mods))
+            if have:
+                extra.remove(have)
+            more.append((have or "OTHER_SWIFT_FLAGS=$(inherited)") + " " + " ".join(maps))
         if not more:
             return False, data
         extra += more
