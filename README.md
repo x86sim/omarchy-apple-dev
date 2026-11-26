@@ -252,6 +252,25 @@ the Linux `ibtool` for Flutter's storyboards
 ([#8](https://github.com/joshuaswarren/omarchy-apple-dev/pull/8)) and plugin
 package support ([#9](https://github.com/joshuaswarren/omarchy-apple-dev/pull/9)).
 
+## Any project: tools/build-project
+
+`tools/build-project DIR` builds an app project of any kind this repo handles, with every step that kind needs, and
+ends with `app: <path to the .app>` (or `error: <one line>` and exit 1):
+
+```bash
+tools/build-project ~/src/MyApp --platform ios --simulator     # also tvos, watchos, xros; --device; --release
+tools/build-project --detect ~/src/MyApp                       # the kind: xtool, xcodeproj, carthage, expo, ...
+tools/build-project --describe ~/src/A ~/src/B                 # JSON lines: kind, name, bundle id, last build
+```
+
+It detects the kind (the rules and their order are in `tools/buildproject/detect.py`; `--kind` overrides): xtool
+packages (`ship.sh`, `kmp/build-app.sh` for Kotlin Multiplatform), .NET (`dotnet/build.sh`), Rust (`rust/build.py`),
+Xcode projects (Swift Build), Carthage / XcodeGen / Tuist (bootstrap or generate first), React Native and Expo
+(install, `expo prebuild`, `pod install`, `tools/xcbuild.py`), and Capacitor, Ionic, Cordova, NativeScript, Godot and
+Unity (the shell's CLI writes the Xcode project). Bazel rules_apple and Flutter simulator builds are refused with the
+reason. Front ends (x86Sim's `x86sim dev`) call it instead of keeping their own recipes; `OAD_SETUP_HINT="mytool
+setup {}"` words its "not installed" errors with their own setup command.
+
 ## Xcode projects, xcodebuild and fastlane
 
 `swiftbuild/install.sh` installs Apple's open-source Swift Build (Xcode's build engine) with sweetpad's Linux front end;
@@ -353,6 +372,7 @@ Large projects need `ulimit -n 65536` before `xtool dev build`.
   `tools/asc.py`, `tools/darwin-tools`, `tools/xcstringstool`.
 - `ship-mac.sh`: macOS `.app` from a SwiftPM package, Developer ID signing,
   `--notarize`.
+- `tools/build-project`: detect and build any app project (see above).
 - `tools/xcodeproj2xtool.py`: xtool adapter for an Xcode project.
 - `tools/ips-symbolicate.py`: resolve a pulled `.ips` crash report on Linux.
 

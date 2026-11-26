@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### `tools/build-project`: one entry point for every project kind
+
+- `tools/build-project DIR [--kind K] [--platform ios|tvos|watchos|xros] [--simulator|--device] [--release]
+  [--log FILE]` detects an app project's kind and runs every step its build needs, ending with `app: <path>`, or with
+  `error: <one line>` and exit 1. `--detect DIR` prints the kind; `--describe DIR...` prints one JSON line per
+  directory (kind, name, bundle id, the last build's .app).
+- The build recipes x86Sim kept in its own `x86sim dev` code now live here, unchanged: Swift Build for Xcode
+  projects (scheme from `-list -json`, `build/x86sim` derived data), `carthage bootstrap --use-xcframeworks
+  --cache-builds`, `tuist generate`, `xcodegen generate`, npm/yarn/pnpm/bun install, `expo prebuild`, `pod install`
+  and `tools/xcbuild.py` for React Native / Expo, and the Capacitor / Ionic / Cordova / NativeScript / Godot / Unity
+  steps; xtool, KMP, .NET and Rust projects run `ship.sh`, `kmp/build-app.sh`, `dotnet/build.sh`, `rust/build.py`.
+- `tests/test_build_project.py`: `--detect` on a fixture per kind, `--describe`, the refusals.
+
 ### Fedora 45 install notes: libxml2 2.13 and an LLD `ld`
 
 - `docs/DISTROS.md` gains a Fedora 45 (aarch64, Asahi) section: a full-mode

@@ -103,5 +103,27 @@ class DetectTest(unittest.TestCase):
         self.assertIn("this phone runs tvos", r.stderr)
 
 
+class ParseTest(unittest.TestCase):
+    def setUp(self):
+        sys.path.insert(0, str(TOOL.parent))
+        from buildproject import detect
+        self.d = detect
+
+    def test_env_value(self):
+        t = "# the shared module\nKMP_GRADLE_ROOT=.. # its Gradle build\nKMP_MODULE=:shared\n"
+        self.assertEqual(self.d.env_value(t, "KMP_GRADLE_ROOT"), "..")
+        self.assertEqual(self.d.env_value('export KMP_GRADLE_ROOT="../kmp"\n', "KMP_GRADLE_ROOT"), "../kmp")
+        self.assertIsNone(self.d.env_value("APP_ICON=AppIcon\n", "KMP_GRADLE_ROOT"))
+        self.assertIsNone(self.d.env_value("KMP_GRADLE_ROOT=\n", "KMP_GRADLE_ROOT"))
+
+    def test_targets_ios(self):
+        t = self.d.targets_ios
+        self.assertTrue(t("<Project><PropertyGroup><TargetFramework>net10.0-ios</TargetFramework></PropertyGroup></Project>"))
+        self.assertTrue(t("<TargetFrameworks>net10.0-android;net10.0-ios;net10.0-maccatalyst</TargetFrameworks>"))
+        self.assertFalse(t("<TargetFramework>net10.0</TargetFramework>"))
+        self.assertFalse(t("<TargetFrameworks>net10.0-android</TargetFrameworks>"))
+        self.assertEqual(self.d.msbuild_tag("<ApplicationId> sim.x86.A </ApplicationId>", "ApplicationId"), "sim.x86.A")
+
+
 if __name__ == "__main__":
     unittest.main()

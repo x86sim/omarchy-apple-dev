@@ -7,6 +7,8 @@ Swift 6.4.2, SDK 27.2).
 
 ## Builders
 
+`tools/build-project DIR` picks the builder below for a project and runs every step before it (README: "Any project").
+
 | Project | Builder | Entry points |
 |---|---|---|
 | `.xcodeproj` / `.xcworkspace` (any shape below) | Swift Build ([swiftbuild/](../swiftbuild/README.md)) | `linux-bin/xcodebuild`, `x86sim dev build/run` |
