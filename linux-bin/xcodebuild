@@ -193,6 +193,8 @@ def passthrough_settings(a):
     for k in ("-xcconfig",):
         if a.opts.get(k):
             out += [k, a.opts[k]]
+    if not a.opts.get("-xcconfig") and os.environ.get("XCODE_XCCONFIG_FILE"):
+        out += ["-xcconfig", os.environ["XCODE_XCCONFIG_FILE"]]  # as xcodebuild reads it (Carthage users set it)
     if a.opts.get("-derivedDataPath"):
         out += ["-derivedDataPath", a.opts["-derivedDataPath"]]
     return out
@@ -230,6 +232,8 @@ def run_sweetpad(cmd, a, extra_settings=(), stream=True):
         e = ev.get("event")
         if e == "output" and stream and "-quiet" not in a.flags:
             print(ev.get("line") or ev.get("text") or ev.get("data") or "", flush=True)
+        elif e == "scheme_action_output" and stream:
+            print(f"{ev.get('title', 'scheme action')}: {ev.get('message', '')}", flush=True)
         elif e == "task" and stream and "-quiet" not in a.flags:
             print(f"{ev.get('kind', 'task')} {ev.get('name', '')}".rstrip(), flush=True)
         elif e == "diagnostic":
@@ -299,10 +303,16 @@ def deployment_retry(a, diags):
     return [f"{k}={v}" for k, v in sorted(fixes.items())]
 
 
-def build_with_retries(cmd, a):
+LAST_DIAGS = [""]
+
+
+def build_with_retries(cmd, a, before=None):
     extra = []
     for _ in range(3):
+        if before:
+            before()
         ok, data, diags = run_sweetpad(cmd, a, extra)
+        LAST_DIAGS[0] = diags
         if ok:
             return True, data
         more = []
@@ -339,17 +349,26 @@ def show_version():
     print(f"Xcode {v}\nBuild version {b}")
 
 
-def show_sdks():
+def show_sdks(as_json=False):
     b = sdk_bundle()
     names = {"iPhoneOS": ("iOS", "iphoneos"), "iPhoneSimulator": ("Simulator - iOS", "iphonesimulator"),
              "AppleTVOS": ("tvOS", "appletvos"), "AppleTVSimulator": ("Simulator - tvOS", "appletvsimulator"),
              "WatchOS": ("watchOS", "watchos"), "WatchSimulator": ("Simulator - watchOS", "watchsimulator"),
              "XROS": ("visionOS", "xros"), "XRSimulator": ("Simulator - visionOS", "xrsimulator"),
              "MacOSX": ("macOS", "macosx")}
+    found = []
     for plat, (title, sdk) in names.items():
         for s in sorted(glob.glob(os.path.join(b, f"Developer/Platforms/{plat}.platform/Developer/SDKs/{plat}[0-9]*.sdk"))):
             ver = os.path.basename(s)[len(plat):-4]
-            print(f"{title} SDKs:\n\t{title} {ver}  \t-sdk {sdk}{ver}\n")
+            found.append({"canonicalName": f"{sdk}{ver}", "displayName": f"{title} {ver}", "isBaseSdk": True,
+                          "platform": sdk, "platformPath": os.path.join(b, f"Developer/Platforms/{plat}.platform"),
+                          "platformVersion": ver, "sdkPath": s, "sdkVersion": ver})
+    if as_json:
+        print(json.dumps(found, indent=2))
+        return
+    for f in found:
+        title = f["displayName"].rsplit(" ", 1)[0]
+        print(f"{title} SDKs:\n\t{f['displayName']}  \t-sdk {f['canonicalName']}\n")
 
 
 def list_project(a):
@@ -408,6 +427,8 @@ def show_build_settings(a):
     try:
         targets = json.loads(r.stdout)["data"]["targets"]
     except (ValueError, KeyError, TypeError):
+        if "no target matched scheme" in r.stdout and "-skipUnavailableActions" in a.flags:
+            return 0  # a scheme that builds nothing (test-only): xcodebuild prints no settings for it
         sys.stderr.write(r.stdout + r.stderr)
         return 65
     action = a.actions[0] if a.actions else "build"
@@ -419,6 +440,9 @@ def show_build_settings(a):
         if st.get("ARCHS") in ("x86_64", ""):
             st["ARCHS"] = st["CURRENT_ARCH"] = st["NATIVE_ARCH"] = "arm64"
         st["ACTION"] = action
+        # the SDK's default (SDKSettings DefaultProperties): sweetpad's settings dump leaves it empty
+        if st.get("PLATFORM_NAME", "").endswith("simulator") and not st.get("LLVM_TARGET_TRIPLE_SUFFIX"):
+            st["LLVM_TARGET_TRIPLE_SUFFIX"] = "-simulator"
         out.append({"action": action, "target": name, "buildSettings": st})
     if "-json" in a.flags:
         print(json.dumps(out, indent=2))
@@ -496,13 +520,52 @@ def archive(a):
     if not a.destinations and not a.opts.get("-sdk"):
         a.destinations.append("generic/platform=iOS")
     cmd = ["archive", "--output-file", out, "--no-export"]
-    ok, data = build_with_retries(cmd, a)
+    stale = os.path.join(out, a.opts.get("-scheme", "") + ".xcarchive")
+    ok, data = build_with_retries(cmd, a, before=lambda: shutil.rmtree(stale, ignore_errors=True))
+    if not ok and "0 applications" in LAST_DIAGS[0]:
+        # a framework / library scheme (Carthage: SKIP_INSTALL=YES): built, but Swift Build's archive step wants an app
+        shutil.rmtree(stale, ignore_errors=True)
+        ok = framework_archive(a, path)
     made = data.get("archivePath") or data.get("archive")
     if ok and made and os.path.abspath(made) != os.path.abspath(path):
         shutil.rmtree(path, ignore_errors=True)
         shutil.move(made, path)
     print("** ARCHIVE SUCCEEDED **" if ok else "** ARCHIVE FAILED **")
     return 0 if ok else 65
+
+
+def framework_archive(a, path):
+    """Finish a non-app archive as Xcode lays it out: the .xcarchive (its Products only when SKIP_INSTALL is not YES)
+    and DerivedData's ArchiveIntermediates/<scheme>/BuildProductsPath/<config>-<sdk>, where Carthage and other tools
+    pick the built frameworks up"""
+    derived = a.opts.get("-derivedDataPath")
+    if not derived:
+        return False
+    sdk = sdk_of(a)
+    sub = f"{a.opts.get('-configuration', 'Release')}-{sdk}"
+    products = os.path.join(os.path.abspath(derived), "Build/Products", sub)
+    if not os.path.isdir(products):
+        say(f"archive: no build products in {products}")
+        return False
+    bpp = os.path.join(os.path.abspath(derived), "Build/Intermediates.noindex/ArchiveIntermediates",
+                       a.opts.get("-scheme", ""), "BuildProductsPath")
+    os.makedirs(bpp, exist_ok=True)
+    link = os.path.join(bpp, sub)
+    if os.path.islink(link) or os.path.exists(link):
+        os.remove(link) if os.path.islink(link) else shutil.rmtree(link)
+    os.symlink(products, link)
+    os.makedirs(os.path.join(path, "Products"), exist_ok=True)
+    if "SKIP_INSTALL=YES" not in a.settings:
+        dst = os.path.join(path, "Products/Library/Frameworks")
+        os.makedirs(dst, exist_ok=True)
+        for f in glob.glob(os.path.join(products, "*.framework")):
+            shutil.copytree(f, os.path.join(dst, os.path.basename(f)), symlinks=True, dirs_exist_ok=True)
+    import datetime
+    with open(os.path.join(path, "Info.plist"), "wb") as f:
+        plistlib.dump({"ArchiveVersion": 2, "CreationDate": datetime.datetime.now(datetime.timezone.utc),
+                       "Name": a.opts.get("-scheme", ""), "SchemeName": a.opts.get("-scheme", "")}, f)
+    say(f"archive: {a.opts.get('-scheme', '')} is not an app; its products are in {link}")
+    return True
 
 
 def export_archive(a):
@@ -526,12 +589,14 @@ def main(argv):
     if not argv or "-help" in argv or "-h" in argv or "--help" in argv:
         print(__doc__)
         return 0
+    if "-create-xcframework" in argv:
+        os.execv(sys.executable, [sys.executable, os.path.join(FORK, "tools/xcframework.py")] + argv)
     a = parse(argv)
     if "-version" in a.flags:
         show_version()
         return 0
     if "-showsdks" in a.flags:
-        show_sdks()
+        show_sdks("-json" in a.flags)
         return 0
     kind, path = container(a)
     if os.environ.get("XCODEBUILD_ENGINE") == "xcbuild" or (not path and os.path.exists("Package.swift")):
