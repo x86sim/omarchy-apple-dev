@@ -1,0 +1,23 @@
+; Godot 4 project: a 2D screen with a counter, exported for iOS on Linux (shells/godot/export.sh).
+
+config_version=5
+
+[application]
+
+config/name="Godot Hello"
+run/main_scene="res://main.tscn"
+config/icon="res://icon.svg"
+config/features=PackedStringArray("4.7", "GL Compatibility")
+
+[display]
+
+window/size/viewport_width=402
+window/size/viewport_height=874
+window/stretch/mode="canvas_items"
+window/handheld/orientation=1
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+textures/vram_compression/import_etc2_astc=true

@@ -105,6 +105,28 @@ bridge answers). Sample: [shells/samples/cordova-hello](../shells/samples/cordov
 prepare fix stopped the same way there ("Cannot find module '~/package.json'"); once fixed it runs on x86Sim.
 Sample: [shells/samples/nativescript-hello](../shells/samples/nativescript-hello).
 
+### Godot 4.7
+
+**Builds, runs (device build, converted).** Godot 4.7.2's official Linux editor exports an iOS Xcode project
+headless with the official iOS export template ([shells/godot/export.sh](../shells/godot/export.sh) downloads both,
+checked against the release's SHA512-SUMS, no account): with `application/export_project_only` the only macOS step,
+building the .ipa, is skipped ("Leaving Xcode project without building the package"). Swift Build builds the project.
+What differs from a Mac:
+
+- **No arm64 simulator library.** The template's `ios-arm64_x86_64-simulator` slice holds x86_64 objects only (2292,
+  no arm64). Apple's iOS 27 simulator refuses x86_64 apps ("does not contain code for any platform", checked on a
+  Mac), so a Godot 4.7.2 export runs on no iOS 27 simulator as shipped. Built for iOS devices instead (arm64,
+  unsigned), the app runs on x86Sim, which converts device apps at install.
+- **Renderer.** The Mobile / Forward+ renderers (Metal) need Apple3-family GPU features (image cube arrays); the
+  simulator's Metal device, Apple's and x86Sim's alike, reports only Mac2 / Common1-3, and Godot stops with "Your Apple
+  GPU does not support ... image cube arrays". The Compatibility renderer (`rendering_method.mobile =
+  "gl_compatibility"`) runs.
+- An app icon is required by the exporter (`config/icon`); `export_presets.cfg` needs an App Store team ID (any value
+  for unsigned builds).
+
+Sample: [shells/samples/godot-hello](../shells/samples/godot-hello) (a label and a button; Godot draws its own UI, so
+x86Sim's check reads it by OCR).
+
 ## React Native on Swift Build (in progress)
 
 A React Native 0.88.1 app with Stripe (0.85, Swift packages, dynamic frameworks as Stripe requires), Skia 2.14,
