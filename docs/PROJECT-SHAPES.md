@@ -77,6 +77,34 @@ and the template has a scene delegate. Swift Build builds `App.xcworkspace`; `CD
 (`contentMode="scaleAspectFill"`) goes to sweetpad's ibtool. On the phone, cordova.js fires `deviceready` (the native
 bridge answers). Sample: [shells/samples/cordova-hello](../shells/samples/cordova-hello).
 
+### NativeScript 9
+
+**Builds, runs.** NativeScript CLI 9.1.2, iOS runtime 9.1.1, hello-world-ts template. What needed Linux paths, all in
+[shells/nativescript/](../shells/nativescript):
+
+- **The CLI** refuses iOS off macOS in three places ([ns-linux.js](../shells/nativescript/ns-linux.js), preloaded by
+  the [ns](../shells/nativescript/ns) wrapper): the iOS platform's `targetedOS` is only `darwin` (`ns prepare ios`:
+  "cannot be executed"), its `validate()` returns nothing off macOS, and @nativescript/doctor reads the Xcode version
+  only on macOS (prepare's Podfile step: "xcodebuild execution failed"; `linux-bin/xcodebuild -version` answers).
+  The CLI also runs `ruby -e "require 'xcodeproj'"` to merge xcconfigs: CocoaPods' Ruby has that gem.
+- **The metadata generator.** The app's link step (`internal/nsld.sh`) runs `objc-metadata-generator`, which turns the
+  SDK's headers into the metadata the JavaScript calls native code through; the runtime package ships it as a macOS
+  binary only. [build-metadata-generator.sh](../shells/nativescript/build-metadata-generator.sh) builds it from
+  NativeScript/ios's source against the system's clang 23 libraries
+  ([metadata-generator-clang22.patch](../shells/nativescript/metadata-generator-clang22.patch): clang 22 removed
+  `ElaboratedType`; module headers, `StringRef::endswith` and `ObjCMethodDecl::ImplementationControl` moved). It
+  writes 11 MB of metadata for the iOS 27.2 SDK in a few seconds.
+- **The project** ([fix-project.py](../shells/nativescript/fix-project.py), after prepare): the CLI's pbxproj writer
+  leaves `explicitFileType = undefined` / `lastKnownFileType = unknown` on the files it adds (plugin sources,
+  xcframeworks, the launch storyboard). Xcode goes by the extension; sweetpad takes them literally (sources not
+  compiled, xcframeworks copied whole), so they are typed. The runtime's xcconfig excludes arm64 from simulator builds
+  on x86_64 hosts (Intel Macs); the simulator here runs arm64, so x86_64 is excluded instead.
+
+`ns build ios` / `ns run ios` call xcodebuild before the fix: use `shells/nativescript/ns prepare ios`, then
+`linux-bin/xcodebuild` (or `x86sim dev build`). Checked against Apple's simulator: the app built here before the
+prepare fix stopped the same way there ("Cannot find module '~/package.json'"); once fixed it runs on x86Sim.
+Sample: [shells/samples/nativescript-hello](../shells/samples/nativescript-hello).
+
 ## React Native on Swift Build (in progress)
 
 A React Native 0.88.1 app with Stripe (0.85, Swift packages, dynamic frameworks as Stripe requires), Skia 2.14,

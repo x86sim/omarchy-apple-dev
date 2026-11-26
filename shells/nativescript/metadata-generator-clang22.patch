@@ -1,0 +1,208 @@
+diff --git i/metadata-generator/src/Binary/binaryOperation.h w/metadata-generator/src/Binary/binaryOperation.h
+index adb7564..20fc712 100644
+--- i/metadata-generator/src/Binary/binaryOperation.h
++++ w/metadata-generator/src/Binary/binaryOperation.h
+@@ -1,5 +1,6 @@
+ #pragma once
+ 
++#include <memory>
+ #include "Utils/stream.h"
+ 
+ namespace binary {
+diff --git i/metadata-generator/src/Binary/binarySerializer.cpp w/metadata-generator/src/Binary/binarySerializer.cpp
+index 25f7c9f..ff307d0 100644
+--- i/metadata-generator/src/Binary/binarySerializer.cpp
++++ w/metadata-generator/src/Binary/binarySerializer.cpp
+@@ -261,7 +261,7 @@ static llvm::ErrorOr<bool> isStaticFramework(clang::Module* framework)
+ 
+     if (path.getError()) {
+         return path.getError();
+-    } else if (path.get().endswith(".tbd")) {
++    } else if (path.get().ends_with(".tbd")) {
+         return true;
+     }
+ 
+diff --git i/metadata-generator/src/HeadersParser/Parser.cpp w/metadata-generator/src/HeadersParser/Parser.cpp
+index 4130759..4861ec8 100644
+--- i/metadata-generator/src/HeadersParser/Parser.cpp
++++ w/metadata-generator/src/HeadersParser/Parser.cpp
+@@ -31,9 +31,9 @@ static std::error_code addHeaderInclude(StringRef headerName, std::vector<SmallS
+     return std::error_code();
+ }
+ 
+-static std::error_code addHeaderInclude(const FileEntry* header, std::vector<SmallString<256>>& includes)
++static std::error_code addHeaderInclude(FileEntryRef header, std::vector<SmallString<256>>& includes)
+ {
+-    return addHeaderInclude(header->getName(), includes);
++    return addHeaderInclude(header.getName(), includes);
+ }
+ 
+ static std::error_code collectModuleHeaderIncludes(FileManager& fileMgr, ModuleMap& modMap, const Module* module, std::vector<SmallString<256>>& includes)
+@@ -42,13 +42,13 @@ static std::error_code collectModuleHeaderIncludes(FileManager& fileMgr, ModuleM
+     if (!module->isAvailable())
+         return std::error_code();
+ 
+-    if (module->Umbrella && module->Umbrella.is<FileEntryRef>()) {
+-        const FileEntry* umbrellaHeader = module->Umbrella.get<FileEntryRef>();
++    if (std::holds_alternative<FileEntryRef>(module->Umbrella)) {
++        FileEntryRef umbrellaHeader = std::get<FileEntryRef>(module->Umbrella);
+         if (std::error_code err = addHeaderInclude(umbrellaHeader, includes))
+             return err;
+     }
+-    else if (module->Umbrella && module->Umbrella.is<DirectoryEntryRef>()) {
+-        const DirectoryEntryRef umbrellaDir = module->Umbrella.get<DirectoryEntryRef>();
++    else if (std::holds_alternative<DirectoryEntryRef>(module->Umbrella)) {
++        const DirectoryEntryRef umbrellaDir = std::get<DirectoryEntryRef>(module->Umbrella);
+         // Add all of the headers we find in this subdirectory.
+         std::error_code ec;
+         SmallString<128> dirNative;
+@@ -56,7 +56,7 @@ static std::error_code collectModuleHeaderIncludes(FileManager& fileMgr, ModuleM
+         for (fs::recursive_directory_iterator dir(dirNative.str(), ec), dirEnd; dir != dirEnd && !ec; dir.increment(ec)) {
+             // Check whether this entry has an extension typically associated with headers.
+             if (!llvm::StringSwitch<bool>(path::extension(dir->path()))
+-                     .Cases(".h", ".H", true)
++                     .Cases({".h", ".H"}, true)
+                      .Default(false))
+                 continue;
+ 
+@@ -77,7 +77,7 @@ static std::error_code collectModuleHeaderIncludes(FileManager& fileMgr, ModuleM
+         if (ec)
+             return ec;
+     } else {
+-        for (auto header : module->Headers[Module::HK_Normal]) {
++        for (auto header : module->getHeaders(Module::HK_Normal)) {
+             if (auto err = addHeaderInclude(header.Entry, includes))
+                 return err;
+         }
+diff --git i/metadata-generator/src/Meta/MetaFactory.cpp w/metadata-generator/src/Meta/MetaFactory.cpp
+index 7f969a3..a95acc4 100644
+--- i/metadata-generator/src/Meta/MetaFactory.cpp
++++ w/metadata-generator/src/Meta/MetaFactory.cpp
+@@ -52,6 +52,19 @@ string MetaFactory::getTypedefOrOwnName(const clang::TagDecl* tagDecl) {
+     if (const clang::TypedefDecl* nextDecl =
+             clang::dyn_cast<clang::TypedefDecl>(
+                 tagDecl->getNextDeclInContext())) {
++#if CLANG_VERSION_MAJOR >= 22
++      if (const clang::TagType* tagType = clang::dyn_cast<clang::TagType>(
++              nextDecl->getUnderlyingType().getTypePtr())) {
++#if CLANG_VERSION_MAJOR == 22
++        const clang::TagDecl* typeDecl = tagType->getOriginalDecl();
++#else
++        const clang::TagDecl* typeDecl = tagType->getDecl();
++#endif
++        if (typeDecl->getCanonicalDecl() == tagDecl->getCanonicalDecl()) {
++          return nextDecl->getFirstDecl()->getNameAsString();
++        }
++      }
++#else
+       if (const clang::ElaboratedType* innerElaboratedType =
+               clang::dyn_cast<clang::ElaboratedType>(
+                   nextDecl->getUnderlyingType().getTypePtr())) {
+@@ -62,6 +75,7 @@ string MetaFactory::getTypedefOrOwnName(const clang::TagDecl* tagDecl) {
+           }
+         }
+       }
++#endif
+     }
+   }
+ 
+@@ -317,7 +331,7 @@ void MetaFactory::createFromVar(const clang::VarDecl& var, VarMeta& varMeta) {
+   varMeta.hasValue = false;
+ 
+   if (var.hasInit()) {
+-    clang::APValue* evValue = var.evaluateValue();
++    const clang::APValue* evValue = var.evaluateValue();
+     if (evValue == nullptr) {
+       throw MetaCreationException(
+           &varMeta, "Unable to evaluate compile-time constant value.", false);
+diff --git i/metadata-generator/src/Meta/TypeFactory.cpp w/metadata-generator/src/Meta/TypeFactory.cpp
+index 8e4bfc0..2406754 100644
+--- i/metadata-generator/src/Meta/TypeFactory.cpp
++++ w/metadata-generator/src/Meta/TypeFactory.cpp
+@@ -170,9 +170,11 @@ shared_ptr<Type> TypeFactory::create(const clang::Type* type) {
+     else if (const clang::IncompleteArrayType* concreteType =
+                  clang::dyn_cast<clang::IncompleteArrayType>(type))
+       resultType = createFromIncompleteArrayType(concreteType);
++#if CLANG_VERSION_MAJOR < 22
+     else if (const clang::ElaboratedType* concreteType =
+                  clang::dyn_cast<clang::ElaboratedType>(type))
+       resultType = createFromElaboratedType(concreteType);
++#endif
+     else if (const clang::AdjustedType* concreteType =
+                  clang::dyn_cast<clang::AdjustedType>(type))
+       resultType = createFromAdjustedType(concreteType);
+@@ -419,10 +421,15 @@ static shared_ptr<Type> tryCreateFromBridgedType(const clang::Type* type) {
+     const clang::Type* pointee = pointerType->getPointeeType().getTypePtr();
+ 
+     // Check for pointer to toll-free bridged types
++#if CLANG_VERSION_MAJOR >= 22
++    {
++      if (const clang::TagType* tagType = clang::dyn_cast<clang::TagType>(pointee)) {
++#else
+     if (const clang::ElaboratedType* elaboratedType =
+             clang::dyn_cast<clang::ElaboratedType>(pointee)) {
+       if (const clang::TagType* tagType = clang::dyn_cast<clang::TagType>(
+               elaboratedType->desugar().getTypePtr())) {
++#endif
+         const clang::TagDecl* tagDecl = tagType->getDecl();
+ 
+         if (clang::ObjCBridgeMutableAttr* bridgeMutableAttr =
+@@ -471,10 +478,12 @@ shared_ptr<Type> TypeFactory::createFromVectorType(
+   throw TypeCreationException(type, "Vector type is not supported.", true);
+ }
+ 
++#if CLANG_VERSION_MAJOR < 22
+ shared_ptr<Type> TypeFactory::createFromElaboratedType(
+     const clang::ElaboratedType* type) {
+   return this->create(type->getNamedType());
+ }
++#endif
+ 
+ shared_ptr<Type> TypeFactory::createFromAdjustedType(
+     const clang::AdjustedType* type) {
+diff --git i/metadata-generator/src/Meta/TypeFactory.h w/metadata-generator/src/Meta/TypeFactory.h
+index 9eb47dc..2511cf8 100644
+--- i/metadata-generator/src/Meta/TypeFactory.h
++++ w/metadata-generator/src/Meta/TypeFactory.h
+@@ -4,6 +4,7 @@
+ #include "MetaEntities.h"
+ #include "TypeEntities.h"
+ #include <clang/AST/RecursiveASTVisitor.h>
++#include <clang/Basic/Version.h>
+ #include <unordered_map>
+ 
+ namespace Meta {
+@@ -86,7 +87,9 @@ private:
+ 
+     std::shared_ptr<Type> createFromVectorType(const clang::VectorType* type);
+ 
++#if CLANG_VERSION_MAJOR < 22
+     std::shared_ptr<Type> createFromElaboratedType(const clang::ElaboratedType* type);
++#endif
+ 
+     std::shared_ptr<Type> createFromAdjustedType(const clang::AdjustedType* type);
+ 
+diff --git i/metadata-generator/src/TypeScript/DefinitionWriter.cpp w/metadata-generator/src/TypeScript/DefinitionWriter.cpp
+index 5a62003..1aae935 100644
+--- i/metadata-generator/src/TypeScript/DefinitionWriter.cpp
++++ w/metadata-generator/src/TypeScript/DefinitionWriter.cpp
+@@ -656,7 +656,7 @@ std::string DefinitionWriter::writeMethod(MethodMeta* meta,
+ 
+   if ((owner->type == MetaType::Protocol &&
+        methodDecl.getImplementationControl() ==
+-           clang::ObjCMethodDecl::ImplementationControl::Optional) ||
++           clang::ObjCImplementationControl::Optional) ||
+       (owner->is(MetaType::Protocol) && meta->getFlags(MethodIsInitializer))) {
+     output << "?";
+   }
+diff --git i/metadata-generator/src/Utils/fileStream.h w/metadata-generator/src/Utils/fileStream.h
+index 41d7a89..e8b8ec0 100644
+--- i/metadata-generator/src/Utils/fileStream.h
++++ w/metadata-generator/src/Utils/fileStream.h
+@@ -1,5 +1,6 @@
+ #pragma once
+ 
++#include <memory>
+ #include "stream.h"
+ #include <fstream>
+ #include <ostream>

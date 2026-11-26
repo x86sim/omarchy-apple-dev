@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# The NativeScript CLI (`ns`) on Linux, for iOS: run in the app's directory, as `ns`.
+#
+#   shells/nativescript/ns prepare ios      write / refresh platforms/ios, ready for linux-bin/xcodebuild (Swift Build)
+#   shells/nativescript/ns <anything>       any other ns command, with the same environment
+#
+# The app's own CLI (node_modules/.bin/ns), else npx's nativescript, runs with ns-linux.js preloaded (its macOS-only
+# gates on the iOS platform), linux-bin first on PATH (xcodebuild -version, xcode-select, xcrun) and CocoaPods' Ruby
+# (cocoapods/install.sh: the xcodeproj gem the CLI merges xcconfigs with; pod for plugins with a Podfile). After a
+# successful prepare / platform add for iOS, fix-project.py puts the Linux metadata generator in (built once by
+# build-metadata-generator.sh) and types the project's file references. `ns build ios` / `ns run ios` call
+# xcodebuild before that fix: build with linux-bin/xcodebuild (or x86Sim's `x86sim dev build`) after `ns prepare ios`.
+set -uo pipefail
+here=$(cd "$(dirname "$(readlink -f "$0")")" && pwd)
+fork=$(cd "$here/../.." && pwd)
+POD_HOME=${POD_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/omarchy-apple-dev/cocoapods}
+if [ -x "$POD_HOME/ruby/bin/ruby" ]; then
+  export GEM_HOME="$POD_HOME/gems" GEM_PATH="$POD_HOME/gems"
+  PATH="$POD_HOME/bin:$POD_HOME/gems/bin:$POD_HOME/ruby/bin:$PATH"
+else
+  echo "ns (Linux): CocoaPods' Ruby is not installed (cocoapods/install.sh): the CLI's xcconfig step needs its xcodeproj gem" >&2
+fi
+export PATH="$fork/linux-bin:$fork/cocoapods/shims:$fork/flutter/shims:$PATH"
+export NODE_OPTIONS="--require \"$here/ns-linux.js\"${NODE_OPTIONS:+ $NODE_OPTIONS}"
+export NS_TELEMETRY_DISABLED=1
+if [ -x node_modules/.bin/ns ]; then
+  node_modules/.bin/ns "$@"
+else
+  npx --yes nativescript "$@"
+fi
+rc=$?
+ios=0 step=0
+for a in "$@"; do
+  case $a in ios | iOS) ios=1 ;; prepare | add | platform) step=1 ;; esac
+done
+if [ $rc = 0 ] && [ $ios = 1 ] && [ $step = 1 ] && [ -d platforms/ios/internal ]; then
+  gen=$("$here/build-metadata-generator.sh" | tail -n1) || exit 1
+  python3 -I "$here/fix-project.py" platforms/ios "$gen" || exit 1
+fi
+exit $rc
