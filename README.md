@@ -265,6 +265,12 @@ Linux, with what Podfiles ask of a Mac (xcrun, `xcodebuild -version`, plutil) an
 dependencies from their Xcode projects with `linux-bin/xcodebuild` (Swift Build). Details:
 [carthage/README.md](carthage/README.md).
 
+## XcodeGen
+
+`xcodegen/install.sh` builds XcodeGen from source with the Linux Swift toolchain; `xcodegen/bin/xcodegen generate`
+writes the Xcode project from project.yml, which `linux-bin/xcodebuild` builds. Details:
+[xcodegen/README.md](xcodegen/README.md).
+
 ## Ship to TestFlight and the App Store
 
 Once: create an App Store Connect API team key (role App Manager with access
