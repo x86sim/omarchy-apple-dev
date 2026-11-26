@@ -271,6 +271,12 @@ dependencies from their Xcode projects with `linux-bin/xcodebuild` (Swift Build)
 writes the Xcode project from project.yml, which `linux-bin/xcodebuild` builds. Details:
 [xcodegen/README.md](xcodegen/README.md).
 
+## Tuist
+
+Tuist runs on macOS only; `tuist/install.sh` builds its manifest library (ProjectDescription) for Linux, and
+`tuist/bin/tuist generate` evaluates Project.swift with it, as Tuist does, and writes the project with XcodeGen.
+Details: [tuist/README.md](tuist/README.md).
+
 ## Ship to TestFlight and the App Store
 
 Once: create an App Store Connect API team key (role App Manager with access

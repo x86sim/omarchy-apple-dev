@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# tuist on Linux (tuist/tuist.py): `tuist generate` with Tuist's own ProjectDescription and XcodeGen
+here=$(dirname "$(readlink -f "$0")")
+exec python3 "$(dirname "$here")/tuist.py" "$@"
