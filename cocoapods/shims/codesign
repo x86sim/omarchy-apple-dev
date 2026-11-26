@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# codesign for CocoaPods' embed scripts on Linux (linux.rb rewrites their /usr/bin/codesign): sweetpad's codesign
+# when Swift Build is installed (swiftbuild/install.sh), else nothing to do (Swift Build signs the app itself).
+sp=${OAD_SWIFTBUILD_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/omarchy-apple-dev/swiftbuild}/current/sweetpad
+[ -x "$sp" ] && exec -a codesign "$(readlink -f "$sp")" "$@"
+exit 0

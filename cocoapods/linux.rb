@@ -26,3 +26,53 @@ module Open3
     end
   end
 end
+
+# After a successful `pod install` / `pod update`: what Xcode does with the workspace that Swift Build (the engine
+# behind linux-bin/xcodebuild) needs spelled out in the project. Each fix is idempotent.
+module OADCocoaPodsLinux
+  def self.after_install(dir)
+    require 'xcodeproj'
+    projects = Dir.glob(File.join(dir, '*.xcodeproj')) + Dir.glob(File.join(dir, 'Pods', 'Pods.xcodeproj'))
+    projects.each do |path|
+      project = Xcodeproj::Project.open(path)
+      changed = false
+      project.native_targets.each do |target|
+        # Swift package products in packageProductDependencies: Xcode links them even with no Frameworks build
+        # file (React Native's spm_dependency only adds the dependency); Swift Build links only what the phase lists
+        deps = target.package_product_dependencies
+        next if deps.empty?
+        phase = target.frameworks_build_phase
+        linked = phase.files.map(&:product_ref).compact
+        (deps - linked).each do |dep|
+          bf = project.new(Xcodeproj::Project::Object::PBXBuildFile)
+          bf.product_ref = dep
+          phase.files << bf
+          changed = true
+          puts "[linux] #{target.name}: link package product #{dep.product_name}"
+        end
+      end
+      # Icon Composer .icon folders `expo prebuild` adds with lastKnownFileType "unknown": Xcode still hands them to
+      # actool, Swift Build only by their type
+      project.files.each do |f|
+        next unless f.path.to_s.end_with?('.icon') && f.last_known_file_type != 'folder.iconcomposer.icon'
+        f.last_known_file_type = 'folder.iconcomposer.icon'
+        f.explicit_file_type = nil
+        changed = true
+        puts "[linux] #{File.basename(path)}: #{f.path} is an Icon Composer icon"
+      end
+      project.save if changed
+    end
+    # CocoaPods' embed and strip scripts call /usr/bin/codesign; on Linux codesign is on PATH (cocoapods/shims)
+    Dir.glob(File.join(dir, 'Pods', 'Target Support Files', '**', '*.sh')).each do |script|
+      text = File.read(script)
+      next unless text.include?('/usr/bin/codesign')
+      File.write(script, text.gsub('/usr/bin/codesign', 'codesign'))
+    end
+  rescue StandardError => e
+    warn "[linux] could not adjust the workspace for Swift Build: #{e.message}"
+  end
+end
+
+if %w[install update].include?(ARGV[0]) && File.basename($PROGRAM_NAME) == 'pod'
+  at_exit { OADCocoaPodsLinux.after_install(Dir.pwd) if $!.nil? || ($!.is_a?(SystemExit) && $!.success?) }
+end
