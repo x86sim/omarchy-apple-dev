@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# fastlane on Linux: the fastlane next on PATH (gem install fastlane), with fastlane/linux.rb loaded so it finds the
+# dev toolchain's xcodebuild (linux-bin) as its Xcode. With Bundler: RUBYOPT="-r<this tree>/fastlane/linux.rb"
+# bundle exec fastlane ... (and linux-bin first on PATH).
+here=$(dirname "$(readlink -f "$0")")
+export RUBYOPT="-r$here/../fastlane/linux.rb${RUBYOPT:+ $RUBYOPT}"
+export PATH="$here:$PATH" FASTLANE_SKIP_UPDATE_CHECK=${FASTLANE_SKIP_UPDATE_CHECK:-1}
+IFS=: read -ra dirs <<<"$PATH"
+for d in "${dirs[@]}"; do
+  [ "$(readlink -f "$d")" = "$(readlink -f "$here")" ] && continue
+  [ -x "$d/fastlane" ] && exec "$d/fastlane" "$@"
+done
+echo "fastlane: not installed (gem install fastlane)" >&2
+exit 127

@@ -1,0 +1,85 @@
+#!/usr/bin/env python3
+"""xcrun on Linux, next to linux-bin/xcodebuild: `xcrun simctl list [devices|runtimes] [-j]` lists x86Sim's phones as
+simulators (fastlane scan picks its destination from that list; the name is the phone's), `simctl boot / shutdown`
+of a listed phone are answered as done (xcodebuild test starts nothing: the phone must be running), and everything
+else goes to the fork's xcrun stand-in (flutter/shims/xcrun: SDK paths, clang, ld, lipo, ...)."""
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+
+HERE = os.path.dirname(os.path.realpath(__file__))
+FORK = os.path.dirname(HERE)
+
+
+def x86sim():
+    for p in (os.environ.get("X86SIM"), shutil.which("x86sim"),
+              os.path.join(os.environ["X86SIM_ROOT"], "cli/x86sim") if os.environ.get("X86SIM_ROOT") else None,
+              os.path.normpath(os.path.join(FORK, "../../cli/x86sim"))):
+        if p and os.access(p, os.X_OK):
+            return p
+    return None
+
+
+def phones():
+    """[(name, folder, model, os, version)]"""
+    x = x86sim()
+    if not x:
+        return []
+    out = subprocess.run([x, "device", "list"], capture_output=True, text=True).stdout
+    rows = []
+    for line in out.splitlines():
+        m = re.match(r"^(\S+)\s+(.+?)\s+(\d+x\d+)\s+(\S+)\s+(\S+)\s+(\S+)\s*$", line)
+        if m:
+            folder, model, _res, osname, ver, name = m.groups()
+            rows.append((name, folder, model, osname, ver))
+    return rows
+
+
+def simctl(args):
+    j = "-j" in args or "--json" in args
+    args = [a for a in args if a not in ("-j", "--json")]
+    if not args or args[0] != "list":
+        if args and args[0] in ("boot", "shutdown", "bootstatus"):
+            return 0
+        sys.stderr.write(f"xcrun simctl {' '.join(args)}: not on Linux (use x86sim for the phones)\n")
+        return 1
+    what = args[1] if len(args) > 1 else ""
+    ps = phones()
+    runtimes = sorted({(o, v) for _, _, _, o, v in ps})
+    if j:
+        out = {}
+        if what in ("", "devices"):
+            out["devices"] = {f"com.apple.CoreSimulator.SimRuntime.{o}-{v.replace('.', '-')}":
+                              [{"name": n, "udid": f, "state": "Booted", "isAvailable": True, "deviceTypeIdentifier": m}
+                               for n, f, m, o2, v2 in ps if (o2, v2) == (o, v)] for o, v in runtimes}
+        if what in ("", "runtimes"):
+            out["runtimes"] = [{"name": f"{o} {v}", "version": v, "isAvailable": True,
+                                "identifier": f"com.apple.CoreSimulator.SimRuntime.{o}-{v.replace('.', '-')}"} for o, v in runtimes]
+        print(json.dumps(out, indent=2))
+        return 0
+    if what in ("", "devices"):
+        print("== Devices ==")
+        for o, v in runtimes:
+            print(f"-- {o} {v} --")
+            for n, f, m, o2, v2 in ps:
+                if (o2, v2) == (o, v):
+                    print(f"    {n} ({f}) (Booted)")
+    if what in ("", "runtimes"):
+        print("== Runtimes ==")
+        for o, v in runtimes:
+            print(f"{o} {v} - com.apple.CoreSimulator.SimRuntime.{o}-{v.replace('.', '-')}")
+    return 0
+
+
+def main(argv):
+    if argv[:1] == ["simctl"]:
+        return simctl(argv[1:])
+    shim = os.path.join(FORK, "flutter/shims/xcrun")
+    os.execv(shim, [shim] + argv)
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
