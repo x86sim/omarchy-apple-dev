@@ -8,6 +8,7 @@ CLIs run on Linux; the Xcode project they write then builds with Swift Build ([s
 | Shell | iOS step on Linux | Xcode project | Sample |
 |---|---|---|---|
 | Capacitor 8 (Ionic) | `npm run build` (when the app has one), `npx cap add ios` once, then `npx cap sync ios` | `ios/App` (`App.xcodeproj`, Capacitor and plugins as Swift packages) | [samples/capacitor-hello](samples/capacitor-hello) |
+| Cordova (cordova-ios 8) | `cordova prepare ios` (adds the platform package.json lists, copies `www/`) | `platforms/ios` (`App.xcworkspace`, CordovaLib and plugins as Swift packages) | [samples/cordova-hello](samples/cordova-hello) |
 
 ```
 cd samples/capacitor-hello && npm install && npx cap add ios

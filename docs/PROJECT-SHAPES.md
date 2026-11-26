@@ -61,6 +61,15 @@ runs first. Sample: [shells/samples/capacitor-hello](../shells/samples/capacitor
   builds `App.xcworkspace`, embedding the pods' frameworks (checked with @capacitor/haptics 8.0.2: builds; `cap` warns
   it found no `xcodebuild` for its clean step, which changes nothing).
 
+### Cordova (cordova-ios 8)
+
+**Builds, runs.** cordova-ios 8.2.0 (Cordova CLI 13) writes `platforms/ios` on Linux: `cordova platform add ios` and
+`cordova prepare ios` have no Mac checks (only `cordova build` / `run` call `xcodebuild`, which x86Sim replaces with
+Swift Build). CordovaLib and plugins come as Swift packages (`packages/cordova-ios`, `packages/cordova-ios-plugins`),
+and the template has a scene delegate. Swift Build builds `App.xcworkspace`; `CDVLaunchScreen.storyboard`
+(`contentMode="scaleAspectFill"`) goes to sweetpad's ibtool. On the phone, cordova.js fires `deviceready` (the native
+bridge answers). Sample: [shells/samples/cordova-hello](../shells/samples/cordova-hello).
+
 ## React Native on Swift Build (in progress)
 
 A React Native 0.88.1 app with Stripe (0.85, Swift packages, dynamic frameworks as Stripe requires), Skia 2.14,

@@ -1,0 +1,18 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Cordova Hello</title></head>
+<body style="font-family:-apple-system;padding:60px 20px">
+<h1>Cordova on x86Sim</h1>
+<p id="ready">Waiting for Cordova</p>
+<p id="count">Taps: 0</p>
+<button id="tap" style="font-size:24px">Tap me</button>
+<script src="cordova.js"></script>
+<script>
+document.addEventListener('deviceready', () => {
+  document.getElementById('ready').textContent = 'Cordova ' + cordova.version + ' on ' + cordova.platformId;
+});
+let n = 0;
+document.getElementById('tap').onclick = () => { n++; document.getElementById('count').textContent = 'Taps: ' + n; };
+</script>
+</body></html>

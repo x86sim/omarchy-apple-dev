@@ -1,0 +1,16 @@
+{
+  "name": "com.x86sim.dev.cordovahello",
+  "displayName": "Cordova Hello",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A Cordova app whose iOS platform is written and built on Linux",
+  "devDependencies": {
+    "cordova": "13.0.0",
+    "cordova-ios": "8.2.0"
+  },
+  "cordova": {
+    "platforms": [
+      "ios"
+    ]
+  }
+}
