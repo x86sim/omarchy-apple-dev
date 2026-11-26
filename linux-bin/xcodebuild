@@ -190,6 +190,11 @@ def destination(a):
 
 def passthrough_settings(a):
     out = list(a.settings)
+    # SwiftUI's macros from the SDK bundle's OpenAppleMacrosServer (install-toolchain.sh builds it with the fork's
+    # patches: @State on a backticked property such as `where`), ahead of sweetpad's: the first plugin named wins
+    oam = os.path.join(sdk_bundle(), "OpenAppleMacrosServer")
+    if os.access(oam, os.X_OK) and not any(x.startswith("OTHER_SWIFT_FLAGS=") for x in out):
+        out.append(f"OTHER_SWIFT_FLAGS=-load-plugin-executable {oam}#SwiftUIMacros $(inherited)")
     for k in ("-xcconfig",):
         if a.opts.get(k):
             out += [k, a.opts[k]]

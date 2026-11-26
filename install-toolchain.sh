@@ -151,6 +151,10 @@ install_oam() {
   local src="$HOME/.cache/omarchy-apple-dev/oam-$OAM_SHA"
   local plugins="$DARWIN_SDK_BUNDLE/Developer/Platforms/iPhoneOS.platform/Developer/usr/lib/swift/host/plugins"
   fetch_commit "$OAM_REPO" "$OAM_SHA" "$src"
+  # @State on a backticked property (`where`): its storage is _where / $where, as Apple's macro makes it
+  local p
+  p="$(cd "$(dirname "$0")" && pwd)/patches/OpenAppleMacros-backticked-state.patch"
+  git -C "$src" apply --reverse --check "$p" 2>/dev/null || git -C "$src" apply "$p"
   echo "Building OpenAppleMacrosServer $OAM_SHA (first run: about 5 minutes)"
   (cd "$src" && swift build -c release --build-system native --static-swift-stdlib \
     --product OpenAppleMacrosServer >/dev/null)
