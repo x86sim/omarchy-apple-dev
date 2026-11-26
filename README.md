@@ -242,6 +242,16 @@ the Linux `ibtool` for Flutter's storyboards
 ([#8](https://github.com/joshuaswarren/omarchy-apple-dev/pull/8)) and plugin
 package support ([#9](https://github.com/joshuaswarren/omarchy-apple-dev/pull/9)).
 
+## Xcode projects, xcodebuild and fastlane
+
+`swiftbuild/install.sh` installs Apple's open-source Swift Build (Xcode's build engine) with sweetpad's Linux front end;
+then `.xcodeproj` and `.xcworkspace` projects build as they are: Objective-C, Swift and mixed targets, frameworks, app
+extensions, watch apps, local and remote Swift packages. `linux-bin/xcodebuild` is the xcodebuild command line on top
+of it (build, test, archive, -exportArchive, -showBuildSettings, -list), and with `linux-bin` first on PATH, CI
+scripts and fastlane's gym and scan run unchanged; tests run on an x86Sim phone. Details and the decision behind it:
+[swiftbuild/README.md](swiftbuild/README.md); every project shape and its status:
+[docs/PROJECT-SHAPES.md](docs/PROJECT-SHAPES.md).
+
 ## CocoaPods, React Native and Expo
 
 `./install-toolchain.sh --cocoapods` installs a pinned, user-local Ruby and CocoaPods; `pod install` then runs on
