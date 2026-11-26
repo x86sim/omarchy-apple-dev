@@ -53,8 +53,15 @@ UI, one tap changes it): x86Sim's `tests/dev/shells_e2e.py`.
 binary xcframeworks), and its CLI is plain Node: `npx cap add ios` and `npx cap sync ios` write `ios/App` on Linux
 with no Mac checks. Swift Build resolves the package and builds `App.xcodeproj`. The template's storyboards
 (`Main.storyboard`: a `CAPBridgeViewController` with no view; `LaunchScreen.storyboard`: an image view) go to
-sweetpad's ibtool. Ionic apps are Capacitor apps whose web assets come from `npm run build` (Vite, Angular), which x86Sim
-runs first. Sample: [shells/samples/capacitor-hello](../shells/samples/capacitor-hello).
+sweetpad's ibtool. Sample: [shells/samples/capacitor-hello](../shells/samples/capacitor-hello).
+
+- **Ionic** (Ionic 9 React starter from `ionic start --type=react --capacitor`, Vite): a Capacitor app whose web
+  assets come from `npm run build`, and which has no `@capacitor/ios` until `ionic capacitor add ios`. x86Sim adds
+  `@capacitor/ios` at the app's `@capacitor/core` version, runs the web build and `cap add ios`; the four plugins of
+  the starter (app, haptics, keyboard, status-bar) are Swift packages. Builds, runs. Sample:
+  [shells/samples/ionic-hello](../shells/samples/ionic-hello) (the starter, its home page a counter). Ionic's
+  `<ion-button>` renders in a shadow root, which WebKit's accessibility tree folds into its parent region: x86Sim's
+  check taps it by its OCR text.
 
 - Capacitor apps on CocoaPods (`npx cap add ios --packagemanager CocoaPods`, older apps): `cap add` / `cap sync` run
   `pod install` with [cocoapods/](../cocoapods/README.md)'s `pod` on PATH (x86Sim puts it there), and Swift Build

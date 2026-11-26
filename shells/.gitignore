@@ -3,3 +3,4 @@ samples/*/ios/
 samples/*/platforms/
 samples/*/plugins/
 samples/*/package-lock.json
+samples/*/dist/
