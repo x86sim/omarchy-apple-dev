@@ -1,0 +1,42 @@
+diff --git a/Sources/Tentacle/Client.swift b/Sources/Tentacle/Client.swift
+index d66897b..1c17d93 100644
+--- a/Sources/Tentacle/Client.swift
++++ b/Sources/Tentacle/Client.swift
+@@ -7,6 +7,9 @@
+ //
+ 
+ import Foundation
++#if canImport(FoundationNetworking)
++import FoundationNetworking
++#endif
+ import ReactiveSwift
+ import Result
+ 
+diff --git a/Sources/Tentacle/Color.swift b/Sources/Tentacle/Color.swift
+index 19e3d33..151f108 100644
+--- a/Sources/Tentacle/Color.swift
++++ b/Sources/Tentacle/Color.swift
+@@ -11,9 +11,22 @@ import Foundation
+ #if os(iOS) || os(tvOS)
+     import UIKit
+     public typealias Color = UIColor
+-#else
++#elseif canImport(Cocoa)
+     import Cocoa
+     public typealias Color = NSColor
++#else
++    // Linux: a plain RGBA value (only issue labels use it)
++    public final class Color: Equatable, Hashable {
++        public let red: Double, green: Double, blue: Double, alpha: Double
++        public init(red: Double, green: Double, blue: Double, alpha: Double) {
++            self.red = red; self.green = green; self.blue = blue; self.alpha = alpha
++        }
++        public static func == (a: Color, b: Color) -> Bool {
++            return a.red == b.red && a.green == b.green && a.blue == b.blue && a.alpha == b.alpha
++        }
++        public func hash(into h: inout Hasher) { h.combine(red); h.combine(green); h.combine(blue); h.combine(alpha) }
++    }
++    typealias CGFloat = Double
+ #endif
+ 
+ extension Color {

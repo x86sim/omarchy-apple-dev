@@ -258,6 +258,13 @@ package support ([#9](https://github.com/joshuaswarren/omarchy-apple-dev/pull/9)
 Linux, with what Podfiles ask of a Mac (xcrun, `xcodebuild -version`, plutil) answered by Linux stand-ins. Details:
 [cocoapods/README.md](cocoapods/README.md).
 
+## Carthage
+
+`carthage/install.sh` builds Carthage 0.40.0 from source with the Linux Swift toolchain (patched for Linux);
+`carthage/bin/carthage bootstrap --use-xcframeworks` then installs prebuilt xcframeworks and builds the other
+dependencies from their Xcode projects with `linux-bin/xcodebuild` (Swift Build). Details:
+[carthage/README.md](carthage/README.md).
+
 ## Ship to TestFlight and the App Store
 
 Once: create an App Store Connect API team key (role App Manager with access

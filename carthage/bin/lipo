@@ -1,0 +1,3 @@
+#!/bin/sh
+# lipo for dsymutil, which merges per-architecture dSYMs with the lipo on PATH: LLVM's
+exec llvm-lipo "$@"

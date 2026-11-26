@@ -1,0 +1,14 @@
+diff --git a/Sources/FoundationExtensions.swift b/Sources/FoundationExtensions.swift
+index 07d5a7a6..d85e759b 100644
+--- a/Sources/FoundationExtensions.swift
++++ b/Sources/FoundationExtensions.swift
+@@ -7,6 +7,9 @@
+ //
+ 
+ import Foundation
++#if canImport(FoundationNetworking)
++import FoundationNetworking
++#endif
+ import Dispatch
+ import enum Result.NoError
+ import struct Result.AnyError
