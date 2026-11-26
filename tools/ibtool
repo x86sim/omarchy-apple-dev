@@ -5304,6 +5304,23 @@ def _main_comp_dir(argv):
     return None
 
 
+def _fallback(argv, err):
+    """What this compiler refuses goes to sweetpad's ibtool when Swift Build is installed (swiftbuild/install.sh):
+    broader, and its nibs load in UIKit, but they are not byte-identical to Apple's. OAD_IBTOOL_STRICT=1: refuse."""
+    if os.environ.get("OAD_IBTOOL_STRICT") == "1":
+        return None
+    root = os.environ.get("OAD_SWIFTBUILD_DIR") or os.path.join(
+        os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share"), "omarchy-apple-dev/swiftbuild")
+    sp = os.path.join(root, "current/sweetpad")
+    if not os.access(sp, os.X_OK):
+        return None
+    print(f"warning: ibtool: {err}; compiled with sweetpad's ibtool instead (loads in UIKit, not byte-identical "
+          f"to Apple's ibtool)", file=sys.stderr)
+    import subprocess
+    # sweetpad is one binary for its tools: it acts as the one argv[0] names
+    return subprocess.run(["ibtool"] + argv, executable=os.path.realpath(sp)).returncode
+
+
 def _main_compile_storyboard(positional, argv):
     """CompileStoryboard: ibtool [flags] IN.storyboard --compilation-directory DIR."""
     if len(positional) != 1 or not _main_comp_dir(argv):
@@ -5313,6 +5330,9 @@ def _main_compile_storyboard(positional, argv):
     try:
         sbc = compile_storyboard(positional[0], _main_comp_dir(argv))
     except (XibError, ET.ParseError) as e:
+        rc = _fallback(argv, e)
+        if rc is not None:
+            return rc
         print(f"error: ibtool: {e}", file=sys.stderr)
         return 1
     _main_partial_plist(argv)
@@ -5329,6 +5349,9 @@ def _main_compile(action_args, argv):
     try:
         data = compile_xib(xib)
     except (XibError, ET.ParseError) as e:
+        rc = _fallback(argv, e)
+        if rc is not None:
+            return rc
         print(f"error: ibtool: {e}", file=sys.stderr)
         return 1
     _main_partial_plist(argv)
