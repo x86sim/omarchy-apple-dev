@@ -1,0 +1,28 @@
+#!/bin/bash
+# C compiler and linker for Rust's iOS targets on Linux: clang with the Darwin SDK that install-toolchain.sh
+# registered (darwin.artifactbundle) and its ld64.lld. Called through its two names:
+#   aarch64-apple-ios-sim-cc   aarch64-apple-ios-sim (the simulator; x86Sim phones)
+#   aarch64-apple-ios-cc       aarch64-apple-ios (iPhone)
+# cargo uses it as the target's linker and cc-rs as CC (rust/ios-env.sh sets both). rustc passes -arch / -isysroot
+# as on a Mac; clang on Linux needs the target triple too, which this adds when the caller gave none, and a linker
+# version: without one clang drives ld64 with the flags of 2011 (no -platform_version) and ld64.lld refuses them.
+set -eu
+here=$(CDPATH= cd -P "$(dirname "$(readlink -f "$0")")" && pwd -P)
+. "$here/ios-sdk.sh"
+
+case "${0##*/}" in
+  *-sim-cc|*-sim-clang) kind=sim ;;
+  *) kind=device ;;
+esac
+ios_sdk_paths "$kind" || exit 1
+
+args=(-isysroot "$IOS_SDK" --ld-path="$IOS_LD" -mlinker-version="${IOS_LINKER_VERSION:-1167}" -Wno-unused-command-line-argument)
+has_target=
+for a do
+  case "$a" in --target=*|-target|-mtargetos=*) has_target=1 ;; esac
+done
+[ -n "$has_target" ] || args=(--target="$IOS_TRIPLE" "${args[@]}")
+# ld64.lld warns on every simulator link that it "does not support" the platform; it links it as Xcode's ld does
+# (xtool's Swift builds use the same linker), so that line is dropped and the rest of stderr kept.
+set -o pipefail
+{ "${IOS_CLANG:-clang}" "${args[@]}" "$@" 2>&1 1>&3 3>&- | { grep -v 'does not support linking for platform' >&2 || true; }; } 3>&1

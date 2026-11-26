@@ -767,6 +767,12 @@ if [ "${OMARCHY_APPLE_COCOAPODS:-1}" != 0 ]; then
   bash "$(dirname "$0")/cocoapods/install.sh" || echo "WARNING: CocoaPods did not install; retry with $0 --cocoapods"
 fi
 
+# Rust for iOS (rust/README.md): only when a rustup toolchain is installed; a failure leaves the rest usable
+if command -v rustup >/dev/null; then
+  echo "== 6c. Rust iOS targets (rust/setup.sh) =="
+  "$(dirname "$0")/rust/setup.sh" || echo "Rust iOS setup failed; re-run rust/setup.sh after fixing it." >&2
+fi
+
 # If an app that failed against an earlier or broken SDK still fails now, the
 # stale module cache is the cause: delete that project's .build directory (or
 # build in a fresh copy of the project) and rebuild.
