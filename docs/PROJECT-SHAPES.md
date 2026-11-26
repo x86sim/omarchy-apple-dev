@@ -155,6 +155,35 @@ its uGUI controls are read through IL2CPP (x86Sim's Unity reader; x86Sim's `test
 tap, typing). Sample: [shells/samples/unity-hello](../shells/samples/unity-hello) (a button, a score, an input
 field, built at run time by `Game.cs`).
 
+### Unreal Engine 5 (researched, not built)
+
+**Does not build on Linux; not attempted beyond research** (2026-11-25, from Epic's documentation; the engine was
+not downloaded). What blocks it, in order:
+
+1. **No iOS target on a Linux host.** Epic documents iOS packaging as needing a Mac: the Windows editor builds iOS
+   only by Remote Build, UnrealBuildTool driving Xcode on up to two Macs over SSH (Project Settings > Platforms > iOS
+   > Remote Build). There is no Linux equivalent: the Linux editor and Linux binary engine builds offer Linux and
+   Android targets, not iOS.
+2. **The engine's iOS libraries.** An iOS app links the engine compiled for iOS. Installed (binary) engines carry
+   them only for macOS hosts (Epic Launcher), and a source build compiles them with UnrealBuildTool's iOS / Apple
+   toolchain, which finds its compiler, linker and SDK through Xcode (xcode-select, xcrun). Engine source also needs
+   a GitHub account linked to an Epic account (a credential, not needed for the answer).
+3. **The Xcode project would not be the problem.** Since UE 5.3 ("Modern Xcode", on by default) the generated
+   project (`Intermediate/ProjectFilesIOS/*.xcodeproj`) is a wrapper whose build phase runs
+   `Engine/Build/BatchFiles/Mac/XcodeBuild.sh`, i.e. UnrealBuildTool; Swift Build runs such script phases on Linux
+   (as for Unity's IL2CPP step). The compile and link work is UnrealBuildTool's, for an iOS target it only drives from
+   a Mac.
+
+A Linux path would mean porting UnrealBuildTool's Apple toolchain to Linux (clang with the Darwin SDK and ld64.lld, as
+the other shapes here use; its xcode-select / xcrun lookups answered by `linux-bin/`), then building the engine for
+iOS from source (hundreds of GB, hours of compiling) — the same kind of work as the .NET and Kotlin/Native toolchains
+needed, at much larger scale. Not done in this round.
+
+Sources: Epic, "Creating Remote Builds of Unreal Engine projects for iOS"
+(dev.epicgames.com/documentation/en-us/unreal-engine/creating-remote-builds-of-unreal-engine-projects-for-ios),
+"Building iOS Projects on Windows" (UE 5.2), "Using Modern Xcode in Unreal Engine"
+(dev.epicgames.com/documentation/en-us/unreal-engine/using-modern-xcode-in-unreal-engine).
+
 ## React Native on Swift Build (in progress)
 
 A React Native 0.88.1 app with Stripe (0.85, Swift packages, dynamic frameworks as Stripe requires), Skia 2.14,

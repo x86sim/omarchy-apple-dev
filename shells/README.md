@@ -19,4 +19,5 @@ cd samples/capacitor-hello && npm install && npx cap add ios
   -destination 'generic/platform=iOS Simulator' -derivedDataPath ios/App/build/x86sim build
 ```
 
+Unreal Engine does not build on Linux (it targets iOS only from a Mac): what blocks it is in docs/PROJECT-SHAPES.md.
 Status and details per shell: [docs/PROJECT-SHAPES.md](../docs/PROJECT-SHAPES.md).
