@@ -13,8 +13,9 @@ What differs from the Mac:
   - -destination picks the SDK (Simulator or device, iOS / tvOS / watchOS / visionOS); builds are "generic" builds
     for it. For test, a simulator destination's name= (or id=, or $XCODEBUILD_PHONE) names the x86Sim phone the tests
     run on; the phone must be running (x86sim start).
-  - a deployment target below what the SDK supports is an error in Swift Build here, a warning in Xcode: when every
-    target of the project is below, the build is retried with the SDK's minimum (and says so).
+  - a deployment target below what the SDK supports is an error (in Xcode 27 too): when every target of the project is
+    below, the build is retried with the SDK's minimum and says so, so old projects build without edits.
+    XCODEBUILD_STRICT=1 stops there as Xcode does.
   - App Intents metadata: when the Linux App Intents processor refuses a construct it does not handle yet, the build is
     retried with LM_SKIP_METADATA_EXTRACTION=YES (said, not silent): the app runs, its App Shortcuts are not registered.
   - XCODEBUILD_ENGINE=xcbuild uses the fork's older ninja builder (tools/xcbuild.py) instead; a Swift package
@@ -190,6 +191,9 @@ def destination(a):
 
 def passthrough_settings(a):
     out = list(a.settings)
+    # x86Sim phones are arm64: a generic simulator build would also make an x86_64 slice nobody runs
+    if sdk_of(a).endswith("simulator") and not any(x.startswith("ARCHS=") or x.startswith("ARCHS[") for x in out):
+        out.append("ARCHS=arm64")
     for k in ("-xcconfig",):
         if a.opts.get(k):
             out += [k, a.opts[k]]
@@ -299,16 +303,19 @@ def deployment_retry(a, diags):
     return [f"{k}={v}" for k, v in sorted(fixes.items())]
 
 
-def build_with_retries(cmd, a):
+def build_with_retries(cmd, a, before=None):
     extra = []
     for _ in range(3):
+        if before:
+            before()
         ok, data, diags = run_sweetpad(cmd, a, extra)
         if ok:
             return True, data
         more = []
-        dt = deployment_retry(a, diags)
+        dt = deployment_retry(a, diags) if os.environ.get("XCODEBUILD_STRICT") != "1" else None
         if dt and not set(dt) <= set(extra):
-            say("raising deployment targets the SDK no longer supports, as Xcode would build them: " + " ".join(dt))
+            say("raising deployment targets the SDK no longer supports (Xcode stops here; XCODEBUILD_STRICT=1 does too): "
+                + " ".join(dt))
             more += dt
         if "appintentsmetadataprocessor" in diags and "LM_SKIP_METADATA_EXTRACTION=YES" not in extra:
             say("the Linux App Intents processor refused this project's App Intents (above); building without their "
@@ -452,6 +459,18 @@ def phone_of(a):
     return None
 
 
+def newest_xctestrun(a):
+    """The .xctestrun build-for-testing wrote into the products dir (sweetpad does not always name it)"""
+    kind, path = container(a)
+    if a.opts.get("-derivedDataPath"):
+        roots = [a.opts["-derivedDataPath"]]
+    else:
+        name = os.path.splitext(os.path.basename((path or "").rstrip("/")))[0]
+        roots = glob.glob(os.path.expanduser(f"~/Library/Developer/Xcode/DerivedData/{name}-*"))
+    runs = [r for root in roots for r in glob.glob(os.path.join(root, "Build/Products/*.xctestrun"))]
+    return max(runs, key=os.path.getmtime) if runs else None
+
+
 def test(a, run=True, build=True):
     """build-for-testing (sweetpad test build: the .xctestrun), then the tests on an x86Sim phone"""
     xctestrun = a.opts.get("-xctestrun")
@@ -460,7 +479,7 @@ def test(a, run=True, build=True):
         if not ok:
             print("** TEST BUILD FAILED **" if run else "** TEST BUILD FAILED **")
             return 65
-        xctestrun = data.get("xctestrunPath") or xctestrun
+        xctestrun = data.get("xctestrunPath") or xctestrun or newest_xctestrun(a)
         if data.get("xctestrunNote"):
             say(data["xctestrunNote"])
         if not run:
@@ -492,15 +511,19 @@ def archive(a):
     if not path:
         die("archive needs -archivePath", 64)
     path = path if path.endswith(".xcarchive") else path + ".xcarchive"
-    out = os.path.dirname(os.path.abspath(path)) or "."
+    # sweetpad writes <scheme>.xcarchive into a directory and will not overwrite it: a fresh one per attempt
+    out = os.path.join(os.path.dirname(os.path.abspath(path)) or ".", ".xcodebuild-archive")
     if not a.destinations and not a.opts.get("-sdk"):
         a.destinations.append("generic/platform=iOS")
     cmd = ["archive", "--output-file", out, "--no-export"]
-    ok, data = build_with_retries(cmd, a)
-    made = data.get("archivePath") or data.get("archive")
-    if ok and made and os.path.abspath(made) != os.path.abspath(path):
+    ok, data = build_with_retries(cmd, a, before=lambda: shutil.rmtree(out, ignore_errors=True))
+    made = data.get("archivePath") or data.get("archive") or next(iter(glob.glob(os.path.join(out, "*.xcarchive"))), None)
+    if ok and made:
         shutil.rmtree(path, ignore_errors=True)
+        os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
         shutil.move(made, path)
+        shutil.rmtree(out, ignore_errors=True)
+        print(f"archive: {os.path.abspath(path)}")
     print("** ARCHIVE SUCCEEDED **" if ok else "** ARCHIVE FAILED **")
     return 0 if ok else 65
 
@@ -536,6 +559,10 @@ def main(argv):
     kind, path = container(a)
     if os.environ.get("XCODEBUILD_ENGINE") == "xcbuild" or (not path and os.path.exists("Package.swift")):
         xcbuild_engine(argv)
+    if "-resolvePackageDependencies" in a.flags:
+        # Swift Build resolves the project's packages when it builds; nothing to do ahead of it
+        print("resolved source packages: the build resolves them (Swift Build)")
+        return 0
     if "-exportArchive" in a.flags:
         return export_archive(a)
     if "-list" in a.flags:

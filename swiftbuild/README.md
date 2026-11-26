@@ -45,8 +45,12 @@ project into an xtool package (editing, SourceKit-LSP), not for building one.
   Shortcuts are not registered. Xcode 27.2 builds both (checked on a Mac).
 - **Script phases with BSD-only flags at absolute paths** (`/bin/ln -sfh`): script phases run in a sandbox with the
   host's GNU tools; Xcode runs them with macOS's. Fix: `ln -sfn` (same meaning) in the project.
-- **Deployment targets below the SDK's range** are errors here, warnings in Xcode. The stand-in retries with the
-  SDK minimum when no target of the project sets a higher one.
+- **Deployment targets below the SDK's range** are errors, as in Xcode 27.2 (checked on a Mac). The stand-in retries
+  with the SDK minimum when no target of the project sets a higher one, and says so (`XCODEBUILD_STRICT=1`: stop).
+- **Schemes Xcode generates** (a project with no shared schemes): sweetpad's do not include the app's test target, so
+  `xcodebuild test` finds no tests there; share the scheme in Xcode or use one that lists them.
+- **UI-test targets** need Xcode's XCTRunner.app, which xtool's SDK does not carry: a scheme with a UI-test target
+  fails build-for-testing. Unit tests (XCTest and Swift Testing) run.
 - **Embedded static frameworks** (Sentry's static xcframework): Swift Build links a stub binary with clang and no
   `-fuse-ld`; `swiftbuild/bin/ld` sends that link to ld64.lld (the stand-in puts it first on PATH).
 - **Interface Builder files**: compiled by the fork's Linux `ibtool` (the SDK bundle's), which writes only what is
