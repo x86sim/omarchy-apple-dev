@@ -67,5 +67,19 @@ if [ -n "$bundle" ] && [ -d "$bundle/Developer" ]; then
     [ -n "$clangv" ] && ln -s "../clang/$(basename "$clangv")" "$tc/usr/lib/swift/clang"
   fi
 fi
+# The SDK's ibtool (install-toolchain.sh copies the fork's tools/ibtool into every platform) sends what it refuses to
+# sweetpad's ibtool; Swift Build runs it without our environment, so it finds sweetpad through a link next to it.
+# A copy older than this checkout's (no fallback) is replaced.
+if [ -n "$bundle" ] && [ -d "$bundle/Developer/Platforms" ]; then
+  for pbin in "$bundle"/Developer/Platforms/*.platform/Developer/usr/bin; do
+    [ -f "$pbin/ibtool" ] || continue
+    if ! cmp -s "$here/../tools/ibtool" "$pbin/ibtool"; then
+      install -m755 "$here/../tools/ibtool" "$pbin/ibtool"
+      install -m644 "$here/../tools/nibarchive.py" "$here/../tools/keyorder.py" "$pbin/"
+      [ ! -f "$pbin/ibmac.py" ] || install -m644 "$here/../tools/ibmac.py" "$pbin/"
+    fi
+    ln -sfn "$root/current/sweetpad" "$pbin/sweetpad"
+  done
+fi
 SWEETPAD_DARWIN_SDK=${bundle:-} "$dest/sweetpad" doctor 2>&1 | grep -E '^\[(ok|fail)\] (Swift Build|Darwin SDK|arm64-apple-ios)' || true
 echo "swiftbuild: $dest (linux-bin/xcodebuild uses it)"

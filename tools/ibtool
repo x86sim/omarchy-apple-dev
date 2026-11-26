@@ -5335,8 +5335,13 @@ def _fallback(argv, err):
         return None
     root = os.environ.get("OAD_SWIFTBUILD_DIR") or os.path.join(
         os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share"), "omarchy-apple-dev/swiftbuild")
-    sp = os.path.join(root, "current/sweetpad")
-    if not os.access(sp, os.X_OK):
+    # Swift Build runs build tasks with its own environment (no OAD_SWIFTBUILD_DIR): swiftbuild/install.sh leaves a
+    # `sweetpad` link next to the SDK's copy of this script
+    cands = [os.path.join(root, "current/sweetpad"), os.path.join(os.path.dirname(os.path.abspath(__file__)), "sweetpad")]
+    if os.environ.get("OAD_SWIFTBUILD_DIR") is None:
+        cands.reverse()
+    sp = next((c for c in cands if os.access(c, os.X_OK)), None)
+    if sp is None:
         return None
     print(f"warning: ibtool: {err}; compiled with sweetpad's ibtool instead (loads in UIKit, not byte-identical "
           f"to Apple's ibtool)", file=sys.stderr)
