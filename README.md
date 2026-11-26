@@ -268,6 +268,31 @@ scripts and fastlane's gym and scan run unchanged; tests run on an x86Sim phone.
 Linux, with what Podfiles ask of a Mac (xcrun, `xcodebuild -version`, plutil) answered by Linux stand-ins. Details:
 [cocoapods/README.md](cocoapods/README.md).
 
+## Carthage
+
+`carthage/install.sh` builds Carthage 0.40.0 from source with the Linux Swift toolchain (patched for Linux);
+`carthage/bin/carthage bootstrap --use-xcframeworks` then installs prebuilt xcframeworks and builds the other
+dependencies from their Xcode projects with `linux-bin/xcodebuild` (Swift Build). Details:
+[carthage/README.md](carthage/README.md).
+
+## XcodeGen
+
+`xcodegen/install.sh` builds XcodeGen from source with the Linux Swift toolchain; `xcodegen/bin/xcodegen generate`
+writes the Xcode project from project.yml, which `linux-bin/xcodebuild` builds. Details:
+[xcodegen/README.md](xcodegen/README.md).
+
+## Tuist
+
+Tuist runs on macOS only; `tuist/install.sh` builds its manifest library (ProjectDescription) for Linux, and
+`tuist/bin/tuist generate` evaluates Project.swift with it, as Tuist does, and writes the project with XcodeGen.
+Details: [tuist/README.md](tuist/README.md).
+
+## Bazel rules_apple
+
+Not yet: apple_support registers its Apple C and Swift toolchains for macOS hosts only, and apple_support, rules_swift
+and rules_apple run `/usr/bin/xcrun` and other macOS tools by absolute path. Where it stops and what a Linux path
+needs: [bazel/README.md](bazel/README.md).
+
 ## Ship to TestFlight and the App Store
 
 Once: create an App Store Connect API team key (role App Manager with access

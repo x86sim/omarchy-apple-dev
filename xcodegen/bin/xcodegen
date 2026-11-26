@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# XcodeGen on Linux: the one xcodegen/install.sh built here with the Linux Swift toolchain
+root=${OAD_XCODEGEN_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/omarchy-apple-dev/xcodegen}
+[ -x "$root/current/xcodegen" ] || { echo "xcodegen: not installed (xcodegen/install.sh)" >&2; exit 1; }
+exec "$root/current/xcodegen" "$@"

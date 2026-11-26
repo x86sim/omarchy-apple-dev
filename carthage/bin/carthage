@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Carthage on Linux: the Carthage that carthage/install.sh built here, with Linux stand-ins for the Xcode tools it runs
+# (this directory's xcrun, linux-bin/xcodebuild) first on PATH.
+here=$(dirname "$(readlink -f "$0")")
+oad=$(dirname "$here")
+root=${OAD_CARTHAGE_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/omarchy-apple-dev/carthage}
+bin=$root/current/carthage
+[ -x "$bin" ] || { echo "carthage: not installed (carthage/install.sh)" >&2; exit 1; }
+export PATH="$here:$oad/linux-bin:$PATH"
+# Carthage stages archives in TMPDIR: keep them off /tmp (often RAM)
+if [ -z "${TMPDIR:-}" ]; then
+  export TMPDIR=${XDG_CACHE_HOME:-$HOME/.cache}/omarchy-apple-dev/tmp
+  mkdir -p "$TMPDIR"
+fi
+exec "$bin" "$@"
