@@ -1,0 +1,42 @@
+#!/usr/bin/env python3
+"""ld for clang links that name no linker (-fuse-ld): a Darwin link goes to the SDK bundle's ld64.lld, anything else
+to the system ld. Swift Build makes the stub binary of an embedded static framework that way (clang -dynamiclib with
+no -mlinker-version), so clang passes the old -<os>_version_min flags, which ld64.lld does not take: they become
+-platform_version here."""
+import os
+import sys
+
+args = sys.argv[1:]
+DARWIN = {"-arch", "-platform_version", "-dylib", "-syslibroot", "-dynamic", "-ios_simulator_version_min",
+          "-iphoneos_version_min", "-macosx_version_min", "-tvos_simulator_version_min", "-tvos_version_min",
+          "-watchos_simulator_version_min", "-watchos_version_min", "-xros_simulator_version_min", "-xros_version_min"}
+if not DARWIN.intersection(args):
+    os.execv("/usr/bin/ld", ["ld"] + args)
+
+PLATFORM = {"-ios_simulator_version_min": "ios-simulator", "-iphoneos_version_min": "ios", "-macosx_version_min": "macos",
+            "-tvos_simulator_version_min": "tvos-simulator", "-tvos_version_min": "tvos",
+            "-watchos_simulator_version_min": "watchos-simulator", "-watchos_version_min": "watchos",
+            "-xros_simulator_version_min": "xros-simulator", "-xros_version_min": "xros"}
+out = []
+i = 0
+have_pv = "-platform_version" in args
+while i < len(args):
+    a = args[i]
+    if a in PLATFORM and i + 1 < len(args):
+        if not have_pv:
+            ver = args[i + 1]
+            # a version the stub got from a static archive (no LC_BUILD_VERSION): keep it loadable
+            if int(ver.split(".")[0] or 0) > 50:
+                ver = "15.0"
+            out += ["-platform_version", PLATFORM[a], ver, ver]
+            have_pv = True
+        i += 2
+        continue
+    if a == "-sdk_version" and i + 1 < len(args):
+        i += 2
+        continue
+    out.append(a)
+    i += 1
+bundle = os.environ.get("DARWIN_SDK_BUNDLE") or os.environ.get("SWEETPAD_DARWIN_SDK") or os.path.expanduser(
+    "~/.config/swiftpm/swift-sdks/darwin.artifactbundle")
+os.execv(os.path.join(bundle, "toolset/bin/ld64.lld"), ["ld64.lld"] + out)
