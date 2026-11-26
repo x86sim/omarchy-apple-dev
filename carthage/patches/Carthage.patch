@@ -1,0 +1,487 @@
+diff --git a/Source/CarthageKit/BuildSettings.swift b/Source/CarthageKit/BuildSettings.swift
+index 308c9c1..9a67176 100644
+--- a/Source/CarthageKit/BuildSettings.swift
++++ b/Source/CarthageKit/BuildSettings.swift
+@@ -237,7 +237,7 @@ public struct BuildSettings {
+ 							}
+ 						}
+ 						
+-						throw NSError()
++						throw NSError(domain: "org.carthage.CarthageKit", code: 0)
+ 					})
+ 						.value ?? root
+ 				}
+diff --git a/Source/CarthageKit/Dependency.swift b/Source/CarthageKit/Dependency.swift
+index 8294527..26a1a01 100644
+--- a/Source/CarthageKit/Dependency.swift
++++ b/Source/CarthageKit/Dependency.swift
+@@ -141,7 +141,7 @@ extension Dependency: Scannable {
+ 			return .failure(ScannableError(message: "expected string after dependency type", currentLine: scanner.currentLine))
+ 		}
+ 
+-		var address: NSString?
++		var address: String?
+ 		if !scanner.scanUpTo("\"", into: &address) || !scanner.scanString("\"", into: nil) {
+ 			return .failure(ScannableError(message: "empty or unterminated string after dependency type", currentLine: scanner.currentLine))
+ 		}
+diff --git a/Source/CarthageKit/FrameworkExtensions.swift b/Source/CarthageKit/FrameworkExtensions.swift
+index 93c4198..10b66d7 100644
+--- a/Source/CarthageKit/FrameworkExtensions.swift
++++ b/Source/CarthageKit/FrameworkExtensions.swift
+@@ -1,4 +1,7 @@
+ import Foundation
++#if canImport(FoundationNetworking)
++import FoundationNetworking
++#endif
+ import Result
+ import ReactiveSwift
+ 
+@@ -242,6 +245,12 @@ extension URL {
+ 	/// determined.
+ 	internal var typeIdentifier: Result<String, CarthageError> {
+ 		var error: NSError?
++		#if !canImport(Darwin)
++		// Linux has no Launch Services: the identifiers Carthage asks about, by extension
++		if let identifier = linuxTypeIdentifier(self) {
++			return .success(identifier)
++		}
++		#endif
+ 
+ 		do {
+ 			let typeIdentifier = try resourceValues(forKeys: [ .typeIdentifierKey ]).typeIdentifier
+@@ -323,6 +332,9 @@ extension FileManager: ReactiveExtensionsProvider {
+ 	/// To avoid this, we drop down to the copyfile c API, explicitly not passing the 'CLONE' flags so we always copy the data normally.
+ 	/// - Parameter avoiding·rdar·32984063: When `false`, passthrough to Foundation’s `FileManager.copyItem(at:to:)`.
+ 	internal func copyItem(at from: URL, to: URL, avoiding·rdar·32984063: Bool) throws {
++		#if !canImport(Darwin)
++		return try self.copyItem(at: from, to: to)
++		#else
+ 		guard avoiding·rdar·32984063, try from.volumeSupportsFileCloning() else {
+ 			return try self.copyItem(at: from, to: to)
+ 		}
+@@ -339,6 +351,7 @@ extension FileManager: ReactiveExtensionsProvider {
+ 				}
+ 			}
+ 		}
++		#endif
+ 	}
+ }
+ 
+@@ -392,8 +405,8 @@ extension Reactive where Base: FileManager {
+ 			var temporaryDirectoryTemplate: ContiguousArray<CChar> = temporaryDirectory.appendingPathComponent(template).utf8CString
+ 
+ 			let result: UnsafeMutablePointer<Int8>? = temporaryDirectoryTemplate
+-				.withUnsafeMutableBufferPointer { (template: inout UnsafeMutableBufferPointer<CChar>) -> UnsafeMutablePointer<CChar> in
+-					mkdtemp(template.baseAddress)
++				.withUnsafeMutableBufferPointer { (template: inout UnsafeMutableBufferPointer<CChar>) -> UnsafeMutablePointer<CChar>? in
++					mkdtemp(template.baseAddress!)
+ 				}
+ 
+ 			if result == nil {
+diff --git a/Source/CarthageKit/Git.swift b/Source/CarthageKit/Git.swift
+index 4b93f24..30b0711 100644
+--- a/Source/CarthageKit/Git.swift
++++ b/Source/CarthageKit/Git.swift
+@@ -84,7 +84,7 @@ public func ensureGitVersion(_ requiredVersion: String = carthageRequiredGitVers
+ 				return false
+ 			}
+ 
+-			var version: NSString?
++			var version: String?
+ 			if scanner.scanUpTo("", into: &version), let version = version {
+ 				return version.compare(requiredVersion, options: [ .numeric ]) != .orderedAscending
+ 			} else {
+@@ -269,7 +269,7 @@ private func parseConfigEntries(_ contents: String, keyPrefix: String = "", keyS
+ 				continue
+ 			}
+ 
+-			var key: NSString?
++			var key: String?
+ 			if !scanner.scanUpTo(keySuffix, into: &key) {
+ 				continue
+ 			}
+diff --git a/Source/CarthageKit/GitHub.swift b/Source/CarthageKit/GitHub.swift
+index 61416ba..1b36bd9 100644
+--- a/Source/CarthageKit/GitHub.swift
++++ b/Source/CarthageKit/GitHub.swift
+@@ -1,4 +1,7 @@
+ import Foundation
++#if canImport(FoundationNetworking)
++import FoundationNetworking
++#endif
+ import Result
+ import ReactiveSwift
+ import Tentacle
+diff --git a/Source/CarthageKit/LinuxCompat.swift b/Source/CarthageKit/LinuxCompat.swift
+new file mode 100644
+index 0000000..1f280dd
+--- /dev/null
++++ b/Source/CarthageKit/LinuxCompat.swift
+@@ -0,0 +1,36 @@
++// Linux stand-ins for the macOS APIs Carthage uses (Launch Services type identifiers, CFNetwork proxy keys)
++import Foundation
++
++#if !canImport(Darwin)
++typealias CFString = String
++
++let kUTTypeFramework = "com.apple.framework"
++let kCFNetworkProxiesHTTPEnable = "HTTPEnable"
++let kCFNetworkProxiesHTTPProxy = "HTTPProxy"
++let kCFNetworkProxiesHTTPPort = "HTTPPort"
++let kCFNetworkProxiesHTTPSEnable = "HTTPSEnable"
++let kCFNetworkProxiesHTTPSProxy = "HTTPSProxy"
++let kCFNetworkProxiesHTTPSPort = "HTTPSPort"
++
++private let linuxTypesByExtension: [String: String] = [
++	"framework": "com.apple.framework",
++	"xcframework": "com.apple.xcframework",
++	"xcodeproj": "com.apple.xcode.project",
++	"xcworkspace": "com.apple.dt.document.workspace",
++	"dsym": "com.apple.xcode.dsym",
++	"bcsymbolmap": "com.apple.xcode.bcsymbolmap",
++	"zip": "public.zip-archive",
++	"app": "com.apple.application-bundle",
++	"bundle": "com.apple.bundle",
++]
++
++/// The type identifier macOS gives the item at URL (by its extension), if it is one Carthage asks about
++func linuxTypeIdentifier(_ url: URL) -> String? {
++	return linuxTypesByExtension[url.pathExtension.lowercased()]
++}
++
++/// UTTypeConformsTo for the identifiers above (no type hierarchy beyond equality and public.item)
++func UTTypeConformsTo(_ type: CFString, _ conformsTo: CFString) -> Bool {
++	return type == conformsTo || conformsTo == "public.item" || (conformsTo == "com.apple.bundle" && type.hasPrefix("com.apple.") && type != "public.zip-archive")
++}
++#endif
+diff --git a/Source/CarthageKit/LinuxSHA256.swift b/Source/CarthageKit/LinuxSHA256.swift
+new file mode 100644
+index 0000000..bf37c6f
+--- /dev/null
++++ b/Source/CarthageKit/LinuxSHA256.swift
+@@ -0,0 +1,41 @@
++// SHA-256 for Linux, where CommonCrypto is missing (the binary-download cache file names)
++func linuxSHA256(_ message: [UInt8]) -> [UInt8] {
++	let k: [UInt32] = [
++		0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
++		0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
++		0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
++		0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
++		0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
++		0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
++		0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
++		0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
++	]
++	var h: [UInt32] = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19]
++	var m = message
++	let bits = UInt64(message.count) * 8
++	m.append(0x80)
++	while m.count % 64 != 56 { m.append(0) }
++	for i in (0..<8).reversed() { m.append(UInt8((bits >> (UInt64(i) * 8)) & 0xff)) }
++	func rotr(_ x: UInt32, _ n: UInt32) -> UInt32 { return (x >> n) | (x << (32 - n)) }
++	for chunk in stride(from: 0, to: m.count, by: 64) {
++		var w = [UInt32](repeating: 0, count: 64)
++		for i in 0..<16 {
++			let b = chunk + i * 4
++			w[i] = UInt32(m[b]) << 24 | UInt32(m[b + 1]) << 16 | UInt32(m[b + 2]) << 8 | UInt32(m[b + 3])
++		}
++		for i in 16..<64 {
++			let s0 = rotr(w[i - 15], 7) ^ rotr(w[i - 15], 18) ^ (w[i - 15] >> 3)
++			let s1 = rotr(w[i - 2], 17) ^ rotr(w[i - 2], 19) ^ (w[i - 2] >> 10)
++			w[i] = w[i - 16] &+ s0 &+ w[i - 7] &+ s1
++		}
++		var a = h[0], b = h[1], c = h[2], d = h[3], e = h[4], f = h[5], g = h[6], hh = h[7]
++		for i in 0..<64 {
++			let t1 = hh &+ (rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25)) &+ ((e & f) ^ (~e & g)) &+ k[i] &+ w[i]
++			let t2 = (rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22)) &+ ((a & b) ^ (a & c) ^ (b & c))
++			hh = g; g = f; f = e; e = d &+ t1; d = c; c = b; b = a; a = t1 &+ t2
++		}
++		h[0] = h[0] &+ a; h[1] = h[1] &+ b; h[2] = h[2] &+ c; h[3] = h[3] &+ d
++		h[4] = h[4] &+ e; h[5] = h[5] &+ f; h[6] = h[6] &+ g; h[7] = h[7] &+ hh
++	}
++	return h.flatMap { v in (0..<4).map { UInt8((v >> (24 - UInt32($0) * 8)) & 0xff) } }
++}
+diff --git a/Source/CarthageKit/MachHeader.swift b/Source/CarthageKit/MachHeader.swift
+index 7fb953d..f16989e 100644
+--- a/Source/CarthageKit/MachHeader.swift
++++ b/Source/CarthageKit/MachHeader.swift
+@@ -1,5 +1,18 @@
+ import Foundation
++#if canImport(MachO)
+ import MachO.loader
++#else
++// Linux: the <mach-o/loader.h> values Carthage reads
++typealias cpu_type_t = Int32
++typealias cpu_subtype_t = Int32
++let MH_MAGIC: UInt32 = 0xfeedface
++let MH_CIGAM: UInt32 = 0xcefaedfe
++let MH_MAGIC_64: UInt32 = 0xfeedfacf
++let MH_CIGAM_64: UInt32 = 0xcffaedfe
++let MH_OBJECT: Int32 = 0x1
++let MH_DYLIB: Int32 = 0x6
++let MH_BUNDLE: Int32 = 0x8
++#endif
+ import ReactiveTask
+ import ReactiveSwift
+ import Result
+diff --git a/Source/CarthageKit/Project.swift b/Source/CarthageKit/Project.swift
+index 0c3c0b6..b521b9d 100644
+--- a/Source/CarthageKit/Project.swift
++++ b/Source/CarthageKit/Project.swift
+@@ -1,7 +1,12 @@
+ // swiftlint:disable file_length
+ 
++#if canImport(CommonCrypto)
+ import CommonCrypto
++#endif
+ import Foundation
++#if canImport(FoundationNetworking)
++import FoundationNetworking
++#endif
+ import Result
+ import ReactiveSwift
+ import Tentacle
+@@ -1114,7 +1119,7 @@ public final class Project { // swiftlint:disable:this type_body_length
+ 					])
+ 
+ 					if dependencyCheckoutURLResource?.isSymbolicLink == true {
+-						_ = dependencyCheckoutURL.path.withCString(Darwin.unlink)
++						_ = dependencyCheckoutURL.path.withCString { unlink($0) }
+ 					} else if dependencyCheckoutURLResource?.isDirectory == true {
+ 						// older version of carthage wrote this directory?
+ 						// user wrote this directory, unaware of the precedent not to circumvent carthage’s management?
+@@ -1341,12 +1346,16 @@ private func fileURLToCachedBinary(_ dependency: Dependency, _ release: Release,
+ /// Constructs a file URL to where the binary only framework download should be cached
+ private func downloadURLToCachedBinaryDependency(_ dependency: Dependency, _ semanticVersion: SemanticVersion, _ url: URL) -> URL {
+ 	let urlBytes = url.absoluteString.utf8CString
++	#if canImport(CommonCrypto)
+ 	var digest = Data(count: Int(CC_SHA256_DIGEST_LENGTH))
+ 	_ = digest.withUnsafeMutableBytes { buffer in
+ 		urlBytes.withUnsafeBytes { data in
+ 			CC_SHA256(data.baseAddress!, CC_LONG(urlBytes.count), buffer)
+ 		}
+ 	}
++	#else
++	let digest = Data(linuxSHA256(urlBytes.map { UInt8(bitPattern: $0) }))
++	#endif
+ 	let hexDigest = digest.map { String(format: "%02hhx", $0) }.joined()
+ 	let fileName = url.deletingPathExtension().lastPathComponent
+ 	let fileExtension = url.pathExtension
+diff --git a/Source/CarthageKit/Proxy.swift b/Source/CarthageKit/Proxy.swift
+index e92840f..6060ec8 100644
+--- a/Source/CarthageKit/Proxy.swift
++++ b/Source/CarthageKit/Proxy.swift
+@@ -1,4 +1,7 @@
+ import Foundation
++#if canImport(FoundationNetworking)
++import FoundationNetworking
++#endif
+ 
+ struct Proxy {
+ 	let connectionProxyDictionary: [AnyHashable: Any]?
+@@ -75,10 +78,20 @@ extension Proxy {
+ }
+ 
+ extension URLSession {
++    #if canImport(Darwin)
+     public static var proxiedSession: URLSession {
+         let configuration = URLSessionConfiguration.default
+         configuration.connectionProxyDictionary = Proxy.default.connectionProxyDictionary
+ 
+         return URLSession(configuration: configuration)
+     }
++    #else
++    // Linux: one session for the whole run. Foundation's URLSession here crashes when a session is released while
++    // its transfer handle is still referenced (each request made a new one).
++    public static let proxiedSession: URLSession = {
++        let configuration = URLSessionConfiguration.default
++        configuration.connectionProxyDictionary = Proxy.default.connectionProxyDictionary
++        return URLSession(configuration: configuration)
++    }()
++    #endif
+ }
+diff --git a/Source/CarthageKit/Version.swift b/Source/CarthageKit/Version.swift
+index ce6b214..b5b5939 100644
+--- a/Source/CarthageKit/Version.swift
++++ b/Source/CarthageKit/Version.swift
+@@ -109,7 +109,7 @@ extension SemanticVersion: Scannable {
+ 	/// form "a.b.c" from a string scanner.
+ 	public static func from(_ scanner: Scanner) -> Result<SemanticVersion, ScannableError> {
+ 
+-		var versionBuffer: NSString?
++		var versionBuffer: String?
+ 		guard scanner.scanCharacters(from: versionCharacterSet, into: &versionBuffer),
+ 			let version = versionBuffer as String? else {
+ 			return .failure(ScannableError(message: "expected version", currentLine: scanner.currentLine))
+@@ -215,7 +215,7 @@ extension Scanner {
+ 	fileprivate func scanStringWithPrefix(_ prefix: Character, until: String) -> String? {
+ 		guard !self.isAtEnd, self.remainingSubstring?.first == prefix else { return nil }
+ 
+-		var buffer: NSString?
++		var buffer: String?
+ 		self.scanUpTo(until, into: &buffer)
+ 		guard let stringWithPrefix = buffer as String?, stringWithPrefix.first == prefix else {
+ 			return nil
+@@ -367,7 +367,7 @@ extension PinnedVersion: Scannable {
+ 			return .failure(ScannableError(message: "expected pinned version", currentLine: scanner.currentLine))
+ 		}
+ 
+-		var commitish: NSString?
++		var commitish: String?
+ 		if !scanner.scanUpTo("\"", into: &commitish) || commitish == nil {
+ 			return .failure(ScannableError(message: "empty pinned version", currentLine: scanner.currentLine))
+ 		}
+@@ -463,7 +463,7 @@ extension VersionSpecifier: Scannable {
+ 		} else if scanner.scanString("~>", into: nil) {
+ 			return SemanticVersion.from(scanner).map { .compatibleWith($0) }
+ 		} else if scanner.scanString("\"", into: nil) {
+-			var refName: NSString?
++			var refName: String?
+ 			if !scanner.scanUpTo("\"", into: &refName) || refName == nil {
+ 				return .failure(ScannableError(message: "expected Git reference name", currentLine: scanner.currentLine))
+ 			}
+diff --git a/Source/CarthageKit/Xcode.swift b/Source/CarthageKit/Xcode.swift
+index 4fd0be4..204e485 100644
+--- a/Source/CarthageKit/Xcode.swift
++++ b/Source/CarthageKit/Xcode.swift
+@@ -36,7 +36,7 @@ private func compilerVersionArguments(usingToolchain toolchain: String?) -> [Str
+ private func parseSwiftVersionCommand(output: String?) -> String? {
+ 	guard
+ 		let output = output,
+-		let regex = try? NSRegularExpression(pattern: "Apple Swift version ([^\\s]+) .*\\((.[^\\)]+)\\)", options: []),
++		let regex = try? NSRegularExpression(pattern: "(?:Apple )?Swift version ([^\\s]+) .*\\((.[^\\)]+)\\)", options: []),
+ 		let match = regex.firstMatch(in: output, options: [], range: NSRange(output.startIndex..., in: output))
+ 		else
+ 	{
+@@ -641,7 +641,8 @@ private func mergeIntoXCFramework(in directoryURL: URL, settings: BuildSettings)
+ 			framework: frameworkURL,
+ 			debugSymbols: debugSymbols,
+ 			platformName: platformName,
+-			variant: settings.platformTripleVariant.value,
++			// a device build's LLVM_TARGET_TRIPLE_SUFFIX is empty: no variant, as in the xcframework's Info.plist
++			variant: settings.platformTripleVariant.value.flatMap { $0.isEmpty ? nil : $0 },
+ 			outputURL: outputURL
+ 		)
+ 		.mapError(CarthageError.taskError)
+@@ -863,7 +864,7 @@ func extractXCFrameworks(in buildDirectory: URL, for settings: BuildSettings) ->
+ 
+ 	let makeTemporaryDirectory = SignalProducer<URL, CarthageError> { () -> Result<URL, CarthageError> in
+ 		var templatePath = (NSTemporaryDirectory() as NSString).appendingPathComponent("carthage-xcframework-XXXX").utf8CString
+-		let result = templatePath.withUnsafeMutableBufferPointer({ mkdtemp($0.baseAddress) })
++		let result = templatePath.withUnsafeMutableBufferPointer({ mkdtemp($0.baseAddress!) })
+ 		let temporaryURL = URL(
+ 			fileURLWithPath: templatePath.withUnsafeBufferPointer { String(validatingUTF8: $0.baseAddress!)! }
+ 		)
+@@ -1463,7 +1464,7 @@ public func architecturesInPackage(_ packageURL: URL, xcrunQuery: [String] = ["l
+ 				//
+ 				//     Architectures in the fat file: PathToBinary are: armv7 arm64
+ 				//
+-				var architectures: NSString?
++				var architectures: String?
+ 
+ 				scanner.scanString(binaryURL.path, into: nil)
+ 				scanner.scanString("are:", into: nil)
+@@ -1484,7 +1485,7 @@ public func architecturesInPackage(_ packageURL: URL, xcrunQuery: [String] = ["l
+ 				//
+ 				//     Non-fat file: PathToBinary is architecture: x86_64
+ 				//
+-				var architecture: NSString?
++				var architecture: String?
+ 
+ 				scanner.scanString(binaryURL.path, into: nil)
+ 				scanner.scanString("is architecture:", into: nil)
+@@ -1597,7 +1598,7 @@ private func UUIDsFromDwarfdump(_ url: URL) -> SignalProducer<Set<UUID>, Carthag
+ 			while !scanner.isAtEnd {
+ 				scanner.scanString("UUID: ", into: nil)
+ 
+-				var uuidString: NSString?
++				var uuidString: String?
+ 				scanner.scanCharacters(from: uuidCharacterSet, into: &uuidString)
+ 
+ 				if let uuidString = uuidString as String?, let uuid = UUID(uuidString: uuidString) {
+diff --git a/Source/XCDBLD/SDK.swift b/Source/XCDBLD/SDK.swift
+index 047d337..46cebe7 100644
+--- a/Source/XCDBLD/SDK.swift
++++ b/Source/XCDBLD/SDK.swift
+@@ -188,17 +188,17 @@ extension SDK {
+ 			.map {
+ 				$0.compactMap { (nsobject: Any) -> SDK? in
+ 					let platform = NSString.lowercased(
+-						(nsobject as! NSObject).value(forKey: "platform") as? NSString ?? ""
++						(nsobject as? [String: Any])?["platform"].flatMap { $0 as? String }.map { NSString(string: $0) } ?? ""
+ 					)(with: Locale?.none)
+ 
+ 					guard platform.isEmpty == false else { return nil }
+ 
+ 					guard NSString.lowercased(
+-						(nsobject as! NSObject).value(forKey: "canonicalName") as? NSString ?? "\0"
++						(nsobject as? [String: Any])?["canonicalName"].flatMap { $0 as? String }.map { NSString(string: $0) } ?? "\0"
+ 					)(with: Locale?.none).hasPrefix(platform) else { return nil }
+ 
+ 					let simulatorHeuristic = CollectionOfOne(
+-						(nsobject as! NSObject).value(forKey: "displayName") as? NSString
++						(nsobject as? [String: Any])?["displayName"].flatMap { $0 as? String }.map { NSString(string: $0) }
+ 					).reduce(into: "") {
+ 						$0 = $1?.appending("") ?? $0
+ 						let potentialVersion = $0.reversed().drop(while: "1234567890.".contains)
+@@ -220,7 +220,7 @@ extension SDK {
+ 					}
+ 
+ 					let titleCasedPlatform = repeatElement(
+-						(nsobject as! NSObject).value(forKey: "platformPath") as? NSString ?? "", count: 1
++						(nsobject as? [String: Any])?["platformPath"].flatMap { $0 as? String }.map { NSString(string: $0) } ?? "", count: 1
+ 					).reduce(into: String?.none) { $0 = parseTitleCasePlatform($1.appending("")) }
+ 
+ 					return SDK(name: titleCasedPlatform ?? platform, simulatorHeuristic: simulatorHeuristic)
+diff --git a/Source/carthage/Build.swift b/Source/carthage/Build.swift
+index 4ddb876..6524945 100644
+--- a/Source/carthage/Build.swift
++++ b/Source/carthage/Build.swift
+@@ -192,7 +192,7 @@ public struct BuildCommand: CommandProtocol {
+ 				var temporaryDirectoryTemplate: ContiguousArray<CChar>
+ 				temporaryDirectoryTemplate = (NSTemporaryDirectory() as NSString).appendingPathComponent("carthage-xcodebuild.XXXXXX.log").utf8CString
+ 				let logFD = temporaryDirectoryTemplate.withUnsafeMutableBufferPointer { (template: inout UnsafeMutableBufferPointer<CChar>) -> Int32 in
+-					return mkstemps(template.baseAddress, 4)
++					return mkstemps(template.baseAddress!, 4)
+ 				}
+ 				let logPath = temporaryDirectoryTemplate.withUnsafeBufferPointer { (ptr: UnsafeBufferPointer<CChar>) -> String in
+ 					return String(validatingUTF8: ptr.baseAddress!)!
+diff --git a/Source/carthage/Extensions.swift b/Source/carthage/Extensions.swift
+index abb8178..d138b90 100644
+--- a/Source/carthage/Extensions.swift
++++ b/Source/carthage/Extensions.swift
+@@ -8,13 +8,22 @@ import Result
+ import ReactiveSwift
+ import ReactiveTask
+ 
++#if !canImport(Darwin)
++private var outputQueueToFlush: DispatchQueue?
++#endif
++
+ private let outputQueue = { () -> DispatchQueue in
+ 	let targetQueue = DispatchQueue.global(qos: .userInitiated)
+ 	let queue = DispatchQueue(label: "org.carthage.carthage.outputQueue", target: targetQueue)
+ 
++	#if canImport(Darwin)
+ 	atexit_b {
+ 		queue.sync(flags: .barrier) {}
+ 	}
++	#else
++	outputQueueToFlush = queue
++	atexit { outputQueueToFlush?.sync(flags: .barrier) {} }
++	#endif
+ 
+ 	return queue
+ }()
+diff --git a/Source/carthage/RemoteVersion.swift b/Source/carthage/RemoteVersion.swift
+index e577981..52d116e 100644
+--- a/Source/carthage/RemoteVersion.swift
++++ b/Source/carthage/RemoteVersion.swift
+@@ -1,4 +1,7 @@
+ import Foundation
++#if canImport(FoundationNetworking)
++import FoundationNetworking
++#endif
+ import CarthageKit
+ import ReactiveSwift
+ import ReactiveTask

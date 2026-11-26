@@ -1,0 +1,31 @@
+diff --git a/Sources/SwiftUIMacros/StateMacro.swift b/Sources/SwiftUIMacros/StateMacro.swift
+index e2f72d5..8fea377 100644
+--- a/Sources/SwiftUIMacros/StateMacro.swift
++++ b/Sources/SwiftUIMacros/StateMacro.swift
+@@ -14,7 +14,7 @@ struct StateMacro: PeerMacro, AccessorMacro {
+             return []
+         }
+ 
+-        let name = identifier.trimmed.text
++        let name = identifier.trimmed.text.replacingOccurrences(of: "`", with: "")  // `where` -> _where, $where
+         let type = binding.typeAnnotation?.type.trimmed.description
+         let isPrivate = variable.modifiers.contains { $0.name.tokenKind == .keyword(.private) }
+         let projectedModifier = variable.modifiers.first.map { "\($0.name.trimmed) " } ?? ""
+@@ -91,7 +91,7 @@ struct StateMacro: PeerMacro, AccessorMacro {
+             return []
+         }
+ 
+-        let name = identifier.trimmed.text
++        let name = identifier.trimmed.text.replacingOccurrences(of: "`", with: "")  // `where` -> _where, $where
+         let isPrivate = variable.modifiers.contains { $0.name.tokenKind == .keyword(.private) }
+         let hasExplicitValue = binding.initializer != nil || node.stateValueArgument != nil
+         let hasValue = hasExplicitValue || binding.typeAnnotation?.type.as(OptionalTypeSyntax.self) != nil
+@@ -193,7 +193,7 @@ private func statePropertyName(_ declaration: some DeclSyntaxProtocol) -> String
+           let identifier = variable.bindings.first?.pattern.as(IdentifierPatternSyntax.self)?.identifier else {
+         return nil
+     }
+-    return identifier.trimmed.text
++    return identifier.trimmed.text.replacingOccurrences(of: "`", with: "")
+ }
+ 
+ private extension AttributeSyntax {

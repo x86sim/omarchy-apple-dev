@@ -1,0 +1,60 @@
+diff --git a/Sources/Task.swift b/Sources/Task.swift
+index 147e44f..e19c887 100644
+--- a/Sources/Task.swift
++++ b/Sources/Task.swift
+@@ -166,8 +166,12 @@ private final class Pipe {
+ 				if let dispatchData = dispatchData {
+ 					// Cast DispatchData to Data.
+ 					// See https://gist.github.com/mayoff/6e35e263b9ddd04d9b77e5261212be19.
++					#if canImport(Darwin)
+ 					let nsdata = dispatchData as Any as! NSData // swiftlint:disable:this force_cast
+ 					let data = Data(referencing: nsdata)
++					#else
++					let data = Data(dispatchData)
++					#endif
+ 					observer.send(value: data)
+ 				}
+ 
+@@ -392,6 +396,18 @@ extension Task {
+ 	///
+ 	/// - Returns: A producer that will launch the receiver when started, then send
+ 	///            `TaskEvent`s as execution proceeds.
++	#if !canImport(Darwin)
++	static func linuxLaunchPath(_ path: String) -> String {
++		if FileManager.default.isExecutableFile(atPath: path) { return path }
++		let name = (path as NSString).lastPathComponent
++		for dir in (ProcessInfo.processInfo.environment["PATH"] ?? "").split(separator: ":") {
++			let candidate = "\(dir)/\(name)"
++			if FileManager.default.isExecutableFile(atPath: candidate) { return candidate }
++		}
++		return path
++	}
++	#endif
++
+ 	public func launch( // swiftlint:disable:this function_body_length cyclomatic_complexity
+ 		standardInput: SignalProducer<Data, NoError>? = nil,
+ 		shouldBeTerminatedOnParentExit: Bool = false
+@@ -401,9 +417,15 @@ extension Task {
+ 			let group = Task.group
+ 
+ 			let process = Process()
++			#if canImport(Darwin)
+ 			process.launchPath = self.launchPath
++			#else
++			// Linux: a macOS tool path (/usr/bin/xcrun, /usr/bin/shasum) that is not here runs from PATH
++			process.launchPath = Task.linuxLaunchPath(self.launchPath)
++			#endif
+ 			process.arguments = self.arguments
+ 
++			#if canImport(ObjectiveC)
+ 			if shouldBeTerminatedOnParentExit {
+ 				// This is for terminating subprocesses when the parent process exits.
+ 				// See https://github.com/Carthage/ReactiveTask/issues/3 for the details.
+@@ -412,6 +434,7 @@ extension Task {
+ 					process.perform(selector, with: false as NSNumber)
+ 				}
+ 			}
++			#endif
+ 
+ 			if let cwd = self.workingDirectoryPath {
+ 				process.currentDirectoryPath = cwd

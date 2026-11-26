@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# xcrun for Carthage on Linux (carthage/bin/carthage puts this directory first on PATH):
+#   xcodebuild         linux-bin/xcodebuild (Swift Build; -create-xcframework too)
+#   swift, swiftc      the Linux Swift toolchain (Carthage compares its version with prebuilt binaries')
+#   dwarfdump          llvm-dwarfdump (--uuid, --debug-info)
+#   simctl list        one simulator per simulator SDK (builds for it are generic simulator builds)
+#   rm                 rm
+# Everything else (lipo, otool, strip, dsymutil, clang, codesign, -sdk queries) goes to dotnet/bin/xcrun, the fork's
+# general xcrun. XCRUN_LOG=<file> appends every call to it.
+here=$(dirname "$(readlink -f "$0")")
+oad=$(dirname "$(dirname "$here")")
+[ -n "${XCRUN_LOG:-}" ] && echo "xcrun $*" >>"$XCRUN_LOG"
+args=("$@")
+i=0
+# skip -sdk / -r / -v style options to find the tool
+while [ $i -lt ${#args[@]} ]; do
+  case "${args[$i]}" in
+  -sdk | --sdk) i=$((i + 2)) ;;
+  -r | --run | -l | --log | -n | --no-cache | -v | --verbose) i=$((i + 1)) ;;
+  -f | --find)
+    case "${args[$((i + 1))]}" in
+    xcodebuild) echo "$oad/linux-bin/xcodebuild"; exit 0 ;;
+    esac
+    break ;;
+  *) break ;;
+  esac
+done
+tool=${args[$i]:-}
+rest=("${args[@]:$((i + 1))}")
+case "$tool" in
+xcodebuild) exec python3 "$oad/linux-bin/xcodebuild" "${rest[@]}" ;;
+swift | swiftc) exec "$tool" "${rest[@]}" ;;
+dwarfdump) exec llvm-dwarfdump "${rest[@]}" ;;
+rm) exec rm "${rest[@]}" ;;
+simctl)
+  [ "${rest[0]:-}" = list ] || { echo "xcrun (linux): simctl ${rest[*]}: use x86sim" >&2; exit 72; }
+  # one available simulator per simulator SDK (x86Sim runs the build on any of its phones of that platform)
+  python3 "$oad/linux-bin/xcodebuild" -showsdks -json | python3 -I -c '
+import json, sys, uuid
+names = {"iphonesimulator": ("iOS", "iPhone"), "appletvsimulator": ("tvOS", "Apple TV"),
+         "watchsimulator": ("watchOS", "Apple Watch"), "xrsimulator": ("xrOS", "Apple Vision Pro")}
+devices = {}
+for s in json.load(sys.stdin):
+    if s["platform"] in names:
+        os_, dev = names[s["platform"]]
+        key = "com.apple.CoreSimulator.SimRuntime.%s-%s" % (os_, s["sdkVersion"].replace(".", "-"))
+        devices[key] = [{"name": "x86Sim " + dev, "udid": str(uuid.uuid5(uuid.NAMESPACE_URL, "x86sim:" + key)).upper(),
+                         "isAvailable": True, "state": "Shutdown"}]
+print(json.dumps({"devices": devices}, indent=2))' ;;
+*) exec "$oad/dotnet/bin/xcrun" "$@" ;;
+esac
