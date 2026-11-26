@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# xcode-select on Linux, for build scripts that ask where Xcode is (xcode-select -p) and then use
+# $DEVELOPER_DIR/usr/bin/xcodebuild or $DEVELOPER_DIR/Platforms/...: a Developer directory assembled from the darwin
+# SDK bundle (Platforms, Toolchains) and this directory's xcodebuild, in ~/.cache/omarchy-apple-dev/Developer.
+# $DEVELOPER_DIR wins when it has a usr/bin/xcodebuild, as on a Mac.
+here=$(dirname "$(readlink -f "$0")")
+developer_dir() {
+  if [ -n "${DEVELOPER_DIR:-}" ] && [ -x "$DEVELOPER_DIR/usr/bin/xcodebuild" ]; then
+    echo "$DEVELOPER_DIR"
+    return
+  fi
+  local b=${SWEETPAD_DARWIN_SDK:-${DARWIN_SDK_BUNDLE:-${XDG_CONFIG_HOME:-$HOME/.config}/swiftpm/swift-sdks/darwin.artifactbundle}}
+  local d=${XDG_CACHE_HOME:-$HOME/.cache}/omarchy-apple-dev/Developer
+  mkdir -p "$d/usr/bin"
+  ln -sfn "$b/Developer/Platforms" "$d/Platforms"
+  ln -sfn "$b/Developer/Toolchains" "$d/Toolchains"
+  for t in xcodebuild xcode-select; do ln -sfn "$here/$t" "$d/usr/bin/$t"; done
+  echo "$d"
+}
+case "${1:-}" in
+-p | --print-path | -print-path) developer_dir ;;
+-v | --version | -version) echo "xcode-select version 2409 (Linux)" ;;
+-h | --help | "") echo "usage: xcode-select -p | --version (Linux: Xcode is the darwin SDK bundle)" ;;
+*) echo "xcode-select: $1 is not supported on Linux (Xcode is the darwin SDK bundle)" >&2; exit 1 ;;
+esac

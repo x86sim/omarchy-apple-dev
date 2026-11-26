@@ -62,6 +62,10 @@ if [ -n "$bundle" ] && [ -d "$bundle/Developer" ]; then
     mkdir -p "$tc/usr/include"
     [ -e "$tc/usr/include/swift" ] || ln -s "$(readlink -f "$swift_inc")" "$tc/usr/include/swift"
   fi
+  # Developer/usr/bin as in Xcode: script phases and scheme actions run with it on PATH, and scripts that ask
+  # `xcode-select -p` for Xcode look for usr/bin/xcodebuild there
+  mkdir -p "$bundle/Developer/usr/bin"
+  for t in xcodebuild xcode-select; do ln -sfn "$(dirname "$here")/linux-bin/$t" "$bundle/Developer/usr/bin/$t"; done
   if [ ! -e "$tc/usr/lib/swift/clang" ]; then
     clangv=$(ls -d "$tc"/usr/lib/clang/[0-9]* 2>/dev/null | sort -V | head -n1 || true)
     [ -n "$clangv" ] && ln -s "../clang/$(basename "$clangv")" "$tc/usr/lib/swift/clang"
