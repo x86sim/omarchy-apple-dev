@@ -5384,7 +5384,9 @@ def main(argv):
     flags_with_value, known_flags = _main_flags(argv)
     parsed = _main_parse(argv, flags_with_value, known_flags)
     if parsed is None:
-        return 2
+        # an option this compiler does not implement (--companion-strings-file: a localized storyboard's strings)
+        rc = _fallback(argv, "an option it does not handle")
+        return 2 if rc is None else rc
     action, action_args, positional = parsed
     if positional and not action:
         return _main_compile_storyboard(positional, argv)
