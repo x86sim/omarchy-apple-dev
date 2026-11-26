@@ -43,6 +43,7 @@ SYSTEM_COLORS = {  # name -> built-in spec, preferred over document resources
     # synthesized table/clear colors (oracle: selectionStyle="none" cells)
     "tableCellPlainBackgroundColor": ("white", 1.0, 1.0),
     "clearColor": ("white", 0.0, 0.0),
+    "whiteColor": ("white", 1.0, 1.0),  # opaque gamma 2.2 white (golden RDVTabBar LaunchScreen)
     "systemBackgroundColor": ("white", 1.0, 1.0),
     "labelColor": ("white", 0.0, 1.0),
     # not in document resources (gold Inspector tableView background)
@@ -353,6 +354,10 @@ def build_color_el(b, el, where, resources, named):
     if (el.get("white") == "0.0" and el.get("alpha") == "0.0"
             and el.get("customColorSpace") == "genericGamma22GrayColorSpace"):
         return build_color(b, "clearColor", where)
+    # opaque white in the gamma 2.2 gray space is UIColor.whiteColor (golden RDVTabBar LaunchScreen)
+    if (el.get("white") == "1" and el.get("alpha") == "1"
+            and el.get("customColorSpace") == "genericGamma22GrayColorSpace"):
+        return build_color(b, "whiteColor", where)
     if el.get("red") is not None:
         return build_rgb_color(b, el, where)
     if el.get("white") is not None and el.get("customColorSpace") == "calibratedWhite":
@@ -5097,6 +5102,11 @@ SB_SELF_TEST = (
      "HelloWorld/LaunchScreen.storyboardc"),
     # Shimmer's example (facebookarchive/Shimmer, BSD): an iPad-only document from Xcode 5
     # (targetRuntime iOS.CocoaTouch.iPad). Golden from Xcode 27.2 (27B52).
+    # RDVTabBarController's example (MIT): an opaque white in the gamma 2.2 gray space (UIColor.whiteColor).
+    # Golden from Xcode 27.2 (27B52).
+    ("RDVTabBar LaunchScreen.storyboardc",
+     "RDVTabBar/Base.lproj/LaunchScreen.storyboard",
+     "RDVTabBar/Base.lproj/LaunchScreen.storyboardc"),
     ("Shimmer Logo Main_iPad.storyboardc",
      "ShimmerLogo/Base.lproj/Main_iPad.storyboard",
      "ShimmerLogo/Base.lproj/Main_iPad.storyboardc"),
