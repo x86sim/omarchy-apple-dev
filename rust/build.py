@@ -144,9 +144,13 @@ def scenes(s, crate_dir, env, target, target_dir):
               "its SDK without the scene life cycle; name yours in [package.metadata.ios.info-plist] or set "
               "scene-adapter = true", file=sys.stderr)
         return []
-    obj = os.path.join(target_dir, target, f"rust-scene-adapter-{target}.o")
+    # named by its source's hash: cargo relinks only when its own arguments change, not when an object they name does
+    import hashlib
+    src = os.path.join(HERE, "scene-adapter.m")
+    tag = hashlib.sha256(open(src, "rb").read()).hexdigest()[:12]
+    obj = os.path.join(target_dir, target, f"rust-scene-adapter-{tag}.o")
     os.makedirs(os.path.dirname(obj), exist_ok=True)
-    run([env["CC_" + target.replace("-", "_")], "-fobjc-arc", "-c", os.path.join(HERE, "scene-adapter.m"), "-o", obj],
+    run([env["CC_" + target.replace("-", "_")], "-fobjc-arc", "-c", src, "-o", obj],
         env, crate_dir)
     s["info"]["UIApplicationSceneManifest"] = scene_manifest("RustSceneAdapter")
     return [obj]
