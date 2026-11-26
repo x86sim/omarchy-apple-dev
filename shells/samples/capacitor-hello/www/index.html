@@ -1,0 +1,12 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cap Demo</title></head>
+<body style="font-family:-apple-system;padding:60px 20px">
+<h1>Capacitor on x86Sim</h1>
+<p id="count">Taps: 0</p>
+<button id="tap" style="font-size:24px">Tap me</button>
+<script>
+let n = 0;
+document.getElementById('tap').onclick = () => { n++; document.getElementById('count').textContent = 'Taps: ' + n; };
+</script>
+</body></html>

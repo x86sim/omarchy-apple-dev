@@ -14,6 +14,7 @@ Swift 6.4.2, SDK 27.2).
 | xtool package (Package.swift + xtool.yml) | xtool / SwiftPM | `xtool dev`, `ship.sh` |
 | Swift package directory, `xcodebuild build` in it | `tools/xcbuild.py` (Expo's scripts) | `linux-bin/xcodebuild` |
 | Xcode project to edit as a package | `tools/xcodeproj2xtool.py` (SourceKit-LSP, xtool); not needed for building | |
+| App shells and engine exports (Capacitor, ...): the shell's CLI writes an Xcode project | Swift Build ([shells/](../shells/README.md)) | `x86sim dev build/run`, `linux-bin/xcodebuild` |
 
 ## Xcode project shapes
 
@@ -40,6 +41,25 @@ Swift 6.4.2, SDK 27.2).
 | Unit tests (XCTest, Swift Testing) | `xcodebuild test` / fastlane scan run them on a phone | clean-architecture-swiftui: 76 tests, per-test results |
 | UI-test targets | not yet: need Xcode's XCTRunner.app, which xtool's SDK does not carry | Cronica |
 | Archive (`xcodebuild archive`, fastlane gym) | unsigned archive; `-exportArchive` through sweetpad | NextSunnyDay, clean-architecture-swiftui |
+
+## App shells and game engines
+
+Each was built only on Linux, installed and launched on an x86Sim phone, and checked through MCP (snapshot shows its
+UI, one tap changes it): x86Sim's `tests/dev/shells_e2e.py`.
+
+### Capacitor 8 (and Ionic on Capacitor)
+
+**Builds, runs.** Capacitor 8.6.3's iOS template uses Swift packages (capacitor-swift-pm: Capacitor and Cordova as
+binary xcframeworks), and its CLI is plain Node: `npx cap add ios` and `npx cap sync ios` write `ios/App` on Linux
+with no Mac checks. Swift Build resolves the package and builds `App.xcodeproj`. The template's storyboards
+(`Main.storyboard`: a `CAPBridgeViewController` with no view; `LaunchScreen.storyboard`: an image view) go to
+sweetpad's ibtool. Ionic apps are Capacitor apps whose web assets come from `npm run build` (Vite, Angular), which x86Sim
+runs first. Sample: [shells/samples/capacitor-hello](../shells/samples/capacitor-hello).
+
+- Capacitor apps on CocoaPods (`npx cap add ios --packagemanager CocoaPods`, older apps): `cap add` / `cap sync` run
+  `pod install` with [cocoapods/](../cocoapods/README.md)'s `pod` on PATH (x86Sim puts it there), and Swift Build
+  builds `App.xcworkspace`, embedding the pods' frameworks (checked with @capacitor/haptics 8.0.2: builds; `cap` warns
+  it found no `xcodebuild` for its clean step, which changes nothing).
 
 ## React Native on Swift Build (in progress)
 

@@ -1,0 +1,13 @@
+{
+  "name": "capacitor-hello",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A Capacitor 8 app whose iOS project is written and built on Linux",
+  "dependencies": {
+    "@capacitor/core": "8.6.3",
+    "@capacitor/ios": "8.6.3"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "8.6.3"
+  }
+}
