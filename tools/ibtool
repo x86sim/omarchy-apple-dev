@@ -383,17 +383,19 @@ def build_calibrated_white_color(b, color, where):
 
 
 def build_rgb_color(b, color, where):
-    """An inline sRGB <color red= green= blue= alpha=>. Only components exact in float32 are
-    supported: Apple's golden (MainInterface.storyboard, all zero) stores no -Double values for them."""
+    """An inline sRGB <color red= green= blue= alpha=>. Each component is a float32, followed by
+    a <key>-Double with the document's double when the float32 loses precision (golden MAUI
+    MauiSplash: red 0.31764707 -> UIRed 0.31764707f, UIRed-Double 0.31764707); components
+    exact in float32 have none (MainInterface.storyboard, all zero)."""
     if color.get("colorSpace") != "custom" or color.get("customColorSpace") != "sRGB":
         raise XibError(f"<color> {dict(color.attrib)} is not an sRGB color ({where})")
     comps = [float(_attr(color, k, where)) for k in ("red", "green", "blue", "alpha")]
-    if any(struct.unpack("<f", struct.pack("<f", v))[0] != v for v in comps):
-        raise XibError(f"<color> {comps} needs -Double components, not derived yet ({where})")
     c = b.new("UIColor")
     c.add("UIColorComponentCount", *b.int8(4))
     for k, v in zip(("UIRed", "UIGreen", "UIBlue", "UIAlpha"), comps):
         c.add(k, *b.float32(v))
+        if struct.unpack("<f", struct.pack("<f", v))[0] != v:
+            c.add(k + "-Double", *b.float64(v))
     # NSRGB drops the alpha when the color is opaque, as for system and named
     # colors (Runner LaunchScreen golden: 1 1 1 1 -> "1 1 1").
     if comps[3] == 1.0:
@@ -2434,6 +2436,11 @@ def _scene_image_view(sb, el, where, resources, named, id_map):
     o.add("UIBounds", *b.geom(bx, by, bw, bh))
     o.add("UICenter", *b.geom(cx, cy))
     o.add("UIDeepDrawRect", *b.boolean(False))
+    # A frame-based image view (fixedFrame="YES", MAUI's MauiSplash golden) stores UIOpaque=false and no
+    # UIViewDoesNotTranslateAutoresizingMaskIntoConstraints, whatever translatesAutoresizing... says
+    fixed = el.get("fixedFrame") == "YES"
+    if fixed and el.get("opaque") != "NO":
+        o.add("UIOpaque", *b.boolean(False))
     if el.get("userInteractionEnabled") is not None:
         o.add("UIUserInteractionDisabled", *b.boolean(el.get("userInteractionEnabled") != "NO"))
     if el.get("multipleTouchEnabled") is not None:
@@ -2455,7 +2462,7 @@ def _scene_image_view(sb, el, where, resources, named, id_map):
     if tint is not None:
         o.add("UITintColor", *b.ref(build_color_el(b, tint, where, resources, named)))
     tr = el.get("translatesAutoresizingMaskIntoConstraints")
-    if tr is not None:
+    if tr is not None and not fixed:
         o.add("UIViewDoesNotTranslateAutoresizingMaskIntoConstraints",
               *b.boolean(tr != "NO"))
     group = []
@@ -5103,6 +5110,12 @@ SB_SELF_TEST = (
     ("dotnet HelloNet LaunchScreen.storyboardc",
      "HelloNet/LaunchScreen.storyboard",
      "HelloNet/LaunchScreen.storyboardc"),
+    # The splash screen .NET MAUI's Resizetizer writes (dotnet new maui): a
+    # frame-based image view and an sRGB background whose components need
+    # -Double values. Golden from Xcode 27.2 (27B52).
+    ("MAUI HelloMaui MauiSplash.storyboardc",
+     "HelloMaui/MauiSplash.storyboard",
+     "HelloMaui/MauiSplash.storyboardc"),
 )
 # (label, source, golden nib, --minimum-deployment-target): one scene nib that
 # Apple's ibtool writes differently below iOS 17 (tests/ibtool/golden-pre17,
