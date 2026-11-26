@@ -1,0 +1,618 @@
+#!/usr/bin/env python3
+"""xcodebuild on Linux: the xcodebuild command line that CI scripts, Makefiles and fastlane (gym, scan) run, mapped
+onto Apple's open-source Swift Build (Xcode's build engine, through sweetpad's Linux CLI: swiftbuild/install.sh) and,
+for tests, onto an x86Sim phone (`x86sim test`).
+
+    xcodebuild [-workspace W | -project P] -scheme S [-configuration C] [-sdk SDK] [-destination D]...
+               [-derivedDataPath DIR] [-archivePath A] [-xcconfig F] [-resultBundlePath R] [SETTING=VALUE...]
+               [build | clean | test | build-for-testing | test-without-building | archive | analyze | install]
+    xcodebuild -exportArchive -archivePath A -exportPath DIR [-exportOptionsPlist O]
+    xcodebuild -showBuildSettings [-json] | -list [-json] | -version | -showsdks | -showdestinations
+
+What differs from the Mac:
+  - -destination picks the SDK (Simulator or device, iOS / tvOS / watchOS / visionOS); builds are "generic" builds
+    for it. For test, a simulator destination's name= (or id=, or $XCODEBUILD_PHONE) names the x86Sim phone the tests
+    run on; the phone must be running (x86sim start).
+  - a deployment target below what the SDK supports is an error (in Xcode 27 too): when every target of the project is
+    below, the build is retried with the SDK's minimum and says so, so old projects build without edits.
+    XCODEBUILD_STRICT=1 stops there as Xcode does.
+  - App Intents metadata: when the Linux App Intents processor refuses a construct it does not handle yet, the build is
+    retried with LM_SKIP_METADATA_EXTRACTION=YES (said, not silent): the app runs, its App Shortcuts are not registered.
+  - XCODEBUILD_ENGINE=xcbuild uses the fork's older ninja builder (tools/xcbuild.py) instead; a Swift package
+    directory (no project) always does (CocoaPods' Expo scripts build packages that way).
+"""
+import glob
+import json
+import os
+import plistlib
+import re
+import shlex
+import shutil
+import subprocess
+import sys
+
+HERE = os.path.dirname(os.path.realpath(__file__))
+FORK = os.path.dirname(HERE)
+ACTIONS = ("build", "clean", "test", "build-for-testing", "test-without-building", "archive", "analyze", "install",
+           "installsrc", "docbuild")
+VALUE_OPTS = ("-workspace", "-project", "-scheme", "-target", "-configuration", "-sdk", "-destination", "-arch",
+              "-derivedDataPath", "-archivePath", "-exportPath", "-exportOptionsPlist", "-xcconfig", "-resultBundlePath",
+              "-jobs", "-toolchain", "-testPlan", "-only-testing", "-skip-testing", "-xctestrun", "-testProductsPath",
+              "-destination-timeout", "-maximum-concurrent-test-simulator-destinations", "-test-timeouts-enabled",
+              "-default-test-execution-time-allowance", "-maximum-test-execution-time-allowance", "-scmProvider",
+              "-clonedSourcePackagesDirPath", "-packageCachePath", "-resultBundleVersion", "-authenticationKeyPath",
+              "-authenticationKeyID", "-authenticationKeyIssuerID", "-runFirstLaunch", "-parallel-testing-worker-count",
+              "-only-test-configuration", "-skip-test-configuration", "-retry-tests-on-failure", "-test-iterations",
+              "-collect-test-diagnostics", "-parallel-testing-enabled", "-enableCodeCoverage", "-enableAddressSanitizer",
+              "-enableThreadSanitizer", "-enableUndefinedBehaviorSanitizer", "-resultStreamPath", "-localizationPath",
+              "-exportLanguage", "-defaultPackageRegistryURL", "-packageDependencySCMToRegistryTransformation")
+# SDK name -> sweetpad / xcodebuild generic destination
+GENERIC = {"iphonesimulator": "generic/platform=iOS Simulator", "iphoneos": "generic/platform=iOS",
+           "appletvsimulator": "generic/platform=tvOS Simulator", "appletvos": "generic/platform=tvOS",
+           "watchsimulator": "generic/platform=watchOS Simulator", "watchos": "generic/platform=watchOS",
+           "xrsimulator": "generic/platform=visionOS Simulator", "xros": "generic/platform=visionOS",
+           "macosx": "generic/platform=macOS"}
+PLATFORM_SDK = {"iOS Simulator": "iphonesimulator", "iOS": "iphoneos", "tvOS Simulator": "appletvsimulator",
+                "tvOS": "appletvos", "watchOS Simulator": "watchsimulator", "watchOS": "watchos",
+                "visionOS Simulator": "xrsimulator", "visionOS": "xros", "xrOS Simulator": "xrsimulator",
+                "macOS": "macosx"}
+DT_KEYS = {"iOS": "IPHONEOS_DEPLOYMENT_TARGET", "tvOS": "TVOS_DEPLOYMENT_TARGET", "watchOS": "WATCHOS_DEPLOYMENT_TARGET",
+           "visionOS": "XROS_DEPLOYMENT_TARGET", "macOS": "MACOSX_DEPLOYMENT_TARGET"}
+
+
+def say(msg):
+    sys.stderr.write(f"xcodebuild: {msg}\n")
+    sys.stderr.flush()
+
+
+def die(msg, code=65):
+    sys.stderr.write(f"xcodebuild: error: {msg}\n")
+    sys.exit(code)
+
+
+# ---------------------------------------------------------------------------------------------- environment
+
+
+def sdk_bundle():
+    b = os.environ.get("SWEETPAD_DARWIN_SDK") or os.environ.get("DARWIN_SDK_BUNDLE")
+    if b:
+        return b
+    for base in (os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config"), os.path.expanduser("~")):
+        for sub in ("swiftpm/swift-sdks/darwin.artifactbundle", ".swiftpm/swift-sdks/darwin.artifactbundle"):
+            p = os.path.join(base, sub)
+            if os.path.isdir(p):
+                return p
+    die("no darwin SDK bundle (install-toolchain.sh registers it in ~/.config/swiftpm/swift-sdks)")
+
+
+def sweetpad():
+    root = os.environ.get("OAD_SWIFTBUILD_DIR") or os.path.join(
+        os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share"), "omarchy-apple-dev/swiftbuild")
+    for p in (os.path.join(root, "current/sweetpad"), shutil.which("sweetpad")):
+        if p and os.access(p, os.X_OK):
+            return p
+    die(f"Swift Build is not installed: {FORK}/swiftbuild/install.sh (or XCODEBUILD_ENGINE=xcbuild)")
+
+
+def build_env():
+    env = dict(os.environ)
+    env["SWEETPAD_DARWIN_SDK"] = sdk_bundle()
+    env["DARWIN_SDK_BUNDLE"] = env["SWEETPAD_DARWIN_SDK"]
+    env["SWEETPAD_NONINTERACTIVE"] = "1"
+    # ld (clang links that name no linker: Darwin ones to ld64.lld), then what Podfile scripts ask of a Mac
+    extra = [os.path.join(FORK, "swiftbuild/bin"), os.path.join(FORK, "cocoapods/shims")]
+    env["PATH"] = os.pathsep.join(extra + [p for p in env.get("PATH", "").split(os.pathsep) if p and p not in extra])
+    if not env.get("TMPDIR"):
+        # Swift Build stages files in TMPDIR; /tmp is often RAM
+        t = os.path.join(os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache"), "omarchy-apple-dev/tmp")
+        os.makedirs(t, exist_ok=True)
+        env["TMPDIR"] = t
+    return env
+
+
+# ---------------------------------------------------------------------------------------------- arguments
+
+
+class Args:
+    def __init__(self):
+        self.actions = []
+        self.opts = {}
+        self.destinations = []
+        self.settings = []
+        self.flags = set()
+        self.only_testing = []
+        self.skip_testing = []
+
+
+def parse(argv):
+    a = Args()
+    i = 0
+    while i < len(argv):
+        x = argv[i]
+        if x in ACTIONS:
+            a.actions.append(x)
+        elif x in VALUE_OPTS:
+            if i + 1 >= len(argv):
+                die(f"option {x} needs a value", 64)
+            v = argv[i + 1]
+            if x == "-destination":
+                a.destinations.append(v)
+            elif x in ("-only-testing", "-skip-testing"):
+                (a.only_testing if x == "-only-testing" else a.skip_testing).append(v)
+            else:
+                a.opts[x] = v
+            i += 1
+        elif x.startswith("-only-testing:") or x.startswith("-skip-testing:"):
+            (a.only_testing if x.startswith("-only") else a.skip_testing).append(x.split(":", 1)[1])
+        elif re.match(r"^[A-Za-z_][A-Za-z0-9_]*(\[[^\]]*\])*=", x):
+            a.settings.append(x)
+        elif x.startswith("-"):
+            a.flags.add(x)
+        else:
+            die(f"unknown argument {x!r}", 64)
+        i += 1
+    return a
+
+
+def container(a):
+    """('--workspace', path) / ('--project', path), found in the current directory as xcodebuild does"""
+    if a.opts.get("-workspace"):
+        return "--workspace", a.opts["-workspace"]
+    if a.opts.get("-project"):
+        return "--project", a.opts["-project"]
+    here = sorted(os.listdir("."))
+    pj = [f for f in here if f.endswith(".xcodeproj")]
+    ws = [f for f in here if f.endswith(".xcworkspace")]
+    if len(pj) == 1:
+        return "--project", pj[0]
+    if len(pj) > 1:
+        die("the directory contains several projects; say which with -project", 66)
+    if ws:
+        return "--workspace", ws[0]
+    return None, None
+
+
+def sdk_of(a):
+    """The SDK name the destination / -sdk asks for"""
+    for d in a.destinations:
+        m = re.search(r"platform=([^,]+)", d)
+        if m and m.group(1).strip() in PLATFORM_SDK:
+            return PLATFORM_SDK[m.group(1).strip()]
+    sdk = a.opts.get("-sdk", "")
+    m = re.match(r"([a-z]+?)(\d[\d.]*)?$", sdk)
+    if m and m.group(1) in GENERIC:
+        return m.group(1)
+    return "iphonesimulator"
+
+
+def destination(a):
+    return GENERIC[sdk_of(a)]
+
+
+def passthrough_settings(a):
+    out = list(a.settings)
+    # x86Sim phones are arm64: a generic simulator build would also make an x86_64 slice nobody runs
+    if sdk_of(a).endswith("simulator") and not any(x.startswith("ARCHS=") or x.startswith("ARCHS[") for x in out):
+        out.append("ARCHS=arm64")
+    for k in ("-xcconfig",):
+        if a.opts.get(k):
+            out += [k, a.opts[k]]
+    if a.opts.get("-derivedDataPath"):
+        out += ["-derivedDataPath", a.opts["-derivedDataPath"]]
+    return out
+
+
+# ---------------------------------------------------------------------------------------------- runs
+
+
+def run_sweetpad(cmd, a, extra_settings=(), stream=True):
+    """sweetpad -o ndjson CMD: human lines to stdout as they come, returns (ok, result data, diagnostics text)"""
+    kind, path = container(a)
+    full = [sweetpad(), "-o", "ndjson"] + cmd
+    if kind:
+        full += [kind, path]
+    if a.opts.get("-scheme"):
+        full += ["--scheme", a.opts["-scheme"]]
+    if a.opts.get("-configuration"):
+        full += ["--configuration", a.opts["-configuration"]]
+    if cmd[0] not in ("settings",) or a.destinations or a.opts.get("-sdk"):
+        full += ["--destination", destination(a)]
+    full += ["--non-interactive", "--"] + passthrough_settings(a) + list(extra_settings)
+    if "-verbose" in a.flags:
+        say("run: " + " ".join(shlex.quote(x) for x in full))
+    p = subprocess.Popen(full, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=build_env())
+    result = None
+    diags = []
+    for line in p.stdout:
+        line = line.rstrip("\n")
+        try:
+            ev = json.loads(line)
+        except ValueError:
+            if stream:
+                print(line, flush=True)
+            continue
+        e = ev.get("event")
+        if e == "output" and stream and "-quiet" not in a.flags:
+            print(ev.get("line") or ev.get("text") or ev.get("data") or "", flush=True)
+        elif e == "task" and stream and "-quiet" not in a.flags:
+            print(f"{ev.get('kind', 'task')} {ev.get('name', '')}".rstrip(), flush=True)
+        elif e == "diagnostic":
+            msg = f"{ev.get('severity', 'note')}: {ev.get('message', '')}"
+            loc = ev.get("location")
+            if isinstance(loc, dict) and loc.get("path"):
+                msg = f"{loc['path']}:{loc.get('line', 0)}:{loc.get('column', 0)}: " + msg
+            diags.append(msg)
+            if stream:
+                print(msg, flush=True)
+        elif e == "result":
+            result = ev
+    p.wait()
+    ok = bool(result and result.get("ok")) and p.returncode == 0
+    if result and not ok:
+        err = result.get("error") or {}
+        for d in err.get("diagnostics") or []:
+            m = f"{d.get('severity', 'error')}: {d.get('message', '')}"
+            if m not in diags:
+                diags.append(m)
+        if err.get("message"):
+            diags.append("error: " + err["message"])
+    return ok, (result or {}).get("data") or {}, "\n".join(diags)
+
+
+def project_files(a):
+    kind, path = container(a)
+    if not path:
+        return []
+    if kind == "--project":
+        projs = [path]
+    else:
+        text = open(os.path.join(path, "contents.xcworkspacedata"), encoding="utf-8").read()
+        projs = []
+        for loc in re.findall(r'location\s*=\s*"([^"]+)"', text):
+            k, _, rel = loc.partition(":")
+            p = rel if k == "absolute" else os.path.join(os.path.dirname(os.path.abspath(path)), rel)
+            if p.endswith(".xcodeproj"):
+                projs.append(p)
+    files = []
+    for p in projs:
+        files.append(os.path.join(p, "project.pbxproj"))
+        files += glob.glob(os.path.join(os.path.dirname(os.path.abspath(p)), "**", "*.xcconfig"), recursive=True)
+    return files
+
+
+def deployment_retry(a, diags):
+    """KEY=MIN for a deployment-target error, when no target of the project sets KEY above MIN"""
+    fixes = {}
+    for m in re.finditer(r"deployment target '([A-Z_]+)' is set to ([\d.]+), but the range of supported deployment "
+                         r"target versions is ([\d.]+) to", diags):
+        key, mn = m.group(1), m.group(3)
+        fixes[key] = mn
+    if not fixes:
+        return None
+    ver = lambda s: tuple(int(x) for x in s.split(".") if x.isdigit())
+    for f in project_files(a):
+        try:
+            text = open(f, encoding="utf-8", errors="replace").read()
+        except OSError:
+            continue
+        for key in list(fixes):
+            for v in re.findall(re.escape(key) + r"\s*=\s*\"?([\d.]+)", text):
+                if ver(v) > ver(fixes[key]):
+                    say(f"a target sets {key} = {v}, others are below the SDK's {fixes[key]}: raise those in the project")
+                    return None
+    return [f"{k}={v}" for k, v in sorted(fixes.items())]
+
+
+def build_with_retries(cmd, a, before=None):
+    extra = []
+    for _ in range(3):
+        if before:
+            before()
+        ok, data, diags = run_sweetpad(cmd, a, extra)
+        if ok:
+            return True, data
+        more = []
+        dt = deployment_retry(a, diags) if os.environ.get("XCODEBUILD_STRICT") != "1" else None
+        if dt and not set(dt) <= set(extra):
+            say("raising deployment targets the SDK no longer supports (Xcode stops here; XCODEBUILD_STRICT=1 does too): "
+                + " ".join(dt))
+            more += dt
+        if "appintentsmetadataprocessor" in diags and "LM_SKIP_METADATA_EXTRACTION=YES" not in extra:
+            say("the Linux App Intents processor refused this project's App Intents (above); building without their "
+                "metadata (LM_SKIP_METADATA_EXTRACTION=YES): the app runs, its App Shortcuts are not registered")
+            more.append("LM_SKIP_METADATA_EXTRACTION=YES")
+        # a Clang module a Swift package builds (Stripe3DS2), needed by importers of the package's Swift modules
+        # further down the graph: Xcode finds its generated module map there, Swift Build only for direct dependents
+        mods = sorted(set(re.findall(r"missing required module '([A-Za-z0-9_]+)'", diags)))
+        maps = [f"-Xcc -fmodule-map-file=$(OBJROOT)/GeneratedModuleMaps-$(PLATFORM_NAME)/{m}.modulemap" for m in mods]
+        have = next((x for x in extra if x.startswith("OTHER_SWIFT_FLAGS=")), "")
+        maps = [x for x in maps if x not in have]
+        if maps:
+            say("passing the module maps of package Clang modules to their transitive importers: " + ", ".join(mods))
+            if have:
+                extra.remove(have)
+            more.append((have or "OTHER_SWIFT_FLAGS=$(inherited)") + " " + " ".join(maps))
+        if not more:
+            return False, data
+        extra += more
+    return False, {}
+
+
+# ---------------------------------------------------------------------------------------------- actions
+
+
+def xcode_version():
+    b = sdk_bundle()
+    for v in [os.path.join(b, "version.plist")] + sorted(glob.glob(os.path.expanduser("~/.cache/xtool/darwin-*.xtoolsdk.version.plist"))):
+        try:
+            p = plistlib.load(open(v, "rb"))
+            return p.get("CFBundleShortVersionString", "27.0"), p.get("ProductBuildVersion", "27A0")
+        except (OSError, ValueError, plistlib.InvalidFileException):
+            continue
+    return "27.0", "27A266a"
+
+
+def show_version():
+    v, b = xcode_version()
+    print(f"Xcode {v}\nBuild version {b}")
+
+
+def show_sdks():
+    b = sdk_bundle()
+    names = {"iPhoneOS": ("iOS", "iphoneos"), "iPhoneSimulator": ("Simulator - iOS", "iphonesimulator"),
+             "AppleTVOS": ("tvOS", "appletvos"), "AppleTVSimulator": ("Simulator - tvOS", "appletvsimulator"),
+             "WatchOS": ("watchOS", "watchos"), "WatchSimulator": ("Simulator - watchOS", "watchsimulator"),
+             "XROS": ("visionOS", "xros"), "XRSimulator": ("Simulator - visionOS", "xrsimulator"),
+             "MacOSX": ("macOS", "macosx")}
+    for plat, (title, sdk) in names.items():
+        for s in sorted(glob.glob(os.path.join(b, f"Developer/Platforms/{plat}.platform/Developer/SDKs/{plat}[0-9]*.sdk"))):
+            ver = os.path.basename(s)[len(plat):-4]
+            print(f"{title} SDKs:\n\t{title} {ver}  \t-sdk {sdk}{ver}\n")
+
+
+def list_project(a):
+    kind, path = container(a)
+    if not path:
+        die("the directory does not contain an Xcode project or workspace", 66)
+    r = subprocess.run([sweetpad(), "-o", "json", "scheme", "list", kind, path], capture_output=True, text=True, env=build_env())
+    try:
+        schemes = [s.get("name", s) if isinstance(s, dict) else s for s in json.loads(r.stdout).get("data", {}).get("schemes", [])]
+    except ValueError:
+        schemes = [l.strip() for l in r.stdout.splitlines() if l.strip()]
+    name = os.path.splitext(os.path.basename(path.rstrip("/")))[0]
+    targets, configs = [], []
+    if kind == "--project":
+        sys.path.insert(0, os.path.join(FORK, "tools"))
+        from xcodeproj2xtool import parse_pbxproj
+
+        d = parse_pbxproj(os.path.join(path, "project.pbxproj"))
+        o = d["objects"]
+        root = o[d["rootObject"]]
+        targets = [o[t].get("name", t) for t in root.get("targets", [])]
+        configs = [o[c].get("name") for c in o[root["buildConfigurationList"]].get("buildConfigurations", [])]
+    if "-json" in a.flags:
+        key = "project" if kind == "--project" else "workspace"
+        body = {"name": name, "schemes": schemes}
+        if kind == "--project":
+            body.update(targets=targets, configurations=configs)
+        print(json.dumps({key: body}, indent=2))
+        return 0
+    if kind == "--project":
+        print(f'Information about project "{name}":\n    Targets:')
+        for t in targets:
+            print(f"        {t}")
+        print("\n    Build Configurations:")
+        for c in configs:
+            print(f"        {c}")
+        print(f"\n    If no build configuration is specified and -scheme is not passed then \"{configs[-1] if configs else 'Release'}\" is used.\n")
+        print("    Schemes:")
+    else:
+        print(f'Information about workspace "{name}":\n    Schemes:')
+    for s in schemes:
+        print(f"        {s}")
+    return 0
+
+
+def show_build_settings(a):
+    kind, path = container(a)
+    full = [sweetpad(), "-o", "json", "settings", "show"]
+    if kind:
+        full += [kind, path]
+    for o, f in (("-scheme", "--scheme"), ("-configuration", "--configuration")):
+        if a.opts.get(o):
+            full += [f, a.opts[o]]
+    full += ["--destination", destination(a), "--"] + passthrough_settings(a)
+    r = subprocess.run(full, capture_output=True, text=True, env=build_env())
+    try:
+        targets = json.loads(r.stdout)["data"]["targets"]
+    except (ValueError, KeyError, TypeError):
+        sys.stderr.write(r.stdout + r.stderr)
+        return 65
+    action = a.actions[0] if a.actions else "build"
+    out = []
+    for t in targets:
+        st = dict(t.get("settings") or {})
+        name = t.get("target") or t.get("name") or st.get("TARGET_NAME", "")
+        # a generic build has no run destination: report the arm64 slice the build makes
+        if st.get("ARCHS") in ("x86_64", ""):
+            st["ARCHS"] = st["CURRENT_ARCH"] = st["NATIVE_ARCH"] = "arm64"
+        st["ACTION"] = action
+        out.append({"action": action, "target": name, "buildSettings": st})
+    if "-json" in a.flags:
+        print(json.dumps(out, indent=2))
+    else:
+        for t in out:
+            print(f"Build settings for action {t['action']} and target {t['target']}:")
+            for k in sorted(t["buildSettings"]):
+                print(f"    {k} = {t['buildSettings'][k]}")
+            print()
+    return 0
+
+
+def x86sim():
+    for p in (os.environ.get("X86SIM"), shutil.which("x86sim"),
+              os.path.join(os.environ.get("X86SIM_ROOT", ""), "cli/x86sim") if os.environ.get("X86SIM_ROOT") else None,
+              os.path.normpath(os.path.join(FORK, "../../cli/x86sim"))):
+        if p and os.access(p, os.X_OK):
+            return p
+    return None
+
+
+def phone_of(a):
+    if os.environ.get("XCODEBUILD_PHONE"):
+        return os.environ["XCODEBUILD_PHONE"]
+    for d in a.destinations:
+        kv = dict(x.split("=", 1) for x in d.split(",") if "=" in x)
+        if kv.get("name"):
+            return kv["name"]
+        if kv.get("id"):
+            return kv["id"]
+    return None
+
+
+def newest_xctestrun(a):
+    """The .xctestrun build-for-testing wrote into the products dir (sweetpad does not always name it)"""
+    kind, path = container(a)
+    if a.opts.get("-derivedDataPath"):
+        roots = [a.opts["-derivedDataPath"]]
+    else:
+        name = os.path.splitext(os.path.basename((path or "").rstrip("/")))[0]
+        roots = glob.glob(os.path.expanduser(f"~/Library/Developer/Xcode/DerivedData/{name}-*"))
+    runs = [r for root in roots for r in glob.glob(os.path.join(root, "Build/Products/*.xctestrun"))]
+    return max(runs, key=os.path.getmtime) if runs else None
+
+
+def test(a, run=True, build=True):
+    """build-for-testing (sweetpad test build: the .xctestrun), then the tests on an x86Sim phone"""
+    xctestrun = a.opts.get("-xctestrun")
+    if build:
+        ok, data = build_with_retries(["test", "build"], a)
+        if not ok:
+            print("** TEST BUILD FAILED **" if run else "** TEST BUILD FAILED **")
+            return 65
+        xctestrun = data.get("xctestrunPath") or xctestrun or newest_xctestrun(a)
+        if data.get("xctestrunNote"):
+            say(data["xctestrunNote"])
+        if not run:
+            print("** TEST BUILD SUCCEEDED **")
+            return 0
+    if not xctestrun:
+        die("no .xctestrun to run (build-for-testing made none)")
+    x = x86sim()
+    if not x:
+        die("tests run on an x86Sim phone: x86sim is not on PATH (set X86SIM or X86SIM_ROOT)")
+    phone = phone_of(a)
+    cmd = [x, "test"] + ([phone] if phone else []) + ["--xctestrun", xctestrun]
+    for t in a.only_testing:
+        cmd += ["--only-testing", t]
+    for t in a.skip_testing:
+        cmd += ["--skip-testing", t]
+    if a.opts.get("-resultBundlePath"):
+        rb = a.opts["-resultBundlePath"]
+        os.makedirs(rb, exist_ok=True)
+        cmd += ["--out", rb, "--junit", os.path.join(rb, "junit.xml"), "--json", os.path.join(rb, "results.json")]
+    say("run: " + " ".join(shlex.quote(c) for c in cmd))
+    r = subprocess.run(cmd)
+    print("** TEST SUCCEEDED **" if r.returncode == 0 else "** TEST FAILED **")
+    return 0 if r.returncode == 0 else 65
+
+
+def archive(a):
+    path = a.opts.get("-archivePath")
+    if not path:
+        die("archive needs -archivePath", 64)
+    path = path if path.endswith(".xcarchive") else path + ".xcarchive"
+    # sweetpad writes <scheme>.xcarchive into a directory and will not overwrite it: a fresh one per attempt
+    out = os.path.join(os.path.dirname(os.path.abspath(path)) or ".", ".xcodebuild-archive")
+    if not a.destinations and not a.opts.get("-sdk"):
+        a.destinations.append("generic/platform=iOS")
+    cmd = ["archive", "--output-file", out, "--no-export"]
+    ok, data = build_with_retries(cmd, a, before=lambda: shutil.rmtree(out, ignore_errors=True))
+    made = data.get("archivePath") or data.get("archive") or next(iter(glob.glob(os.path.join(out, "*.xcarchive"))), None)
+    if ok and made:
+        shutil.rmtree(path, ignore_errors=True)
+        os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+        shutil.move(made, path)
+        shutil.rmtree(out, ignore_errors=True)
+        print(f"archive: {os.path.abspath(path)}")
+    print("** ARCHIVE SUCCEEDED **" if ok else "** ARCHIVE FAILED **")
+    return 0 if ok else 65
+
+
+def export_archive(a):
+    arc = a.opts.get("-archivePath")
+    dest = a.opts.get("-exportPath")
+    if not arc or not dest:
+        die("-exportArchive needs -archivePath and -exportPath", 64)
+    cmd = [sweetpad(), "archive", "export", arc, "--output-file", dest]
+    if a.opts.get("-exportOptionsPlist"):
+        cmd += ["--export-options", a.opts["-exportOptionsPlist"]]
+    r = subprocess.run(cmd, env=build_env())
+    print("** EXPORT SUCCEEDED **" if r.returncode == 0 else "** EXPORT FAILED **")
+    return 0 if r.returncode == 0 else 70
+
+
+def xcbuild_engine(argv):
+    os.execv(sys.executable, [sys.executable, os.path.join(FORK, "tools/xcbuild.py")] + argv)
+
+
+def main(argv):
+    if not argv or "-help" in argv or "-h" in argv or "--help" in argv:
+        print(__doc__)
+        return 0
+    a = parse(argv)
+    if "-version" in a.flags:
+        show_version()
+        return 0
+    if "-showsdks" in a.flags:
+        show_sdks()
+        return 0
+    kind, path = container(a)
+    if os.environ.get("XCODEBUILD_ENGINE") == "xcbuild" or (not path and os.path.exists("Package.swift")):
+        xcbuild_engine(argv)
+    if "-resolvePackageDependencies" in a.flags:
+        # Swift Build resolves the project's packages when it builds; nothing to do ahead of it
+        print("resolved source packages: the build resolves them (Swift Build)")
+        return 0
+    if "-exportArchive" in a.flags:
+        return export_archive(a)
+    if "-list" in a.flags:
+        return list_project(a)
+    if not path:
+        die("the directory does not contain an Xcode project, workspace or package", 66)
+    if "-showBuildSettings" in a.flags:
+        return show_build_settings(a)
+    if "-showdestinations" in a.flags:
+        sdk = sdk_of(a)
+        print(f"\n\tAvailable destinations for the \"{a.opts.get('-scheme', '')}\" scheme:")
+        print(f"\t\t{{ platform:{GENERIC[sdk].split('=', 1)[1]}, id:generic, name:Any {GENERIC[sdk].split('=', 1)[1]} Device }}")
+        return 0
+    actions = a.actions or ["build"]
+    for act in actions:
+        if act == "clean":
+            ok, _, _ = run_sweetpad(["clean"], a)
+            print("** CLEAN SUCCEEDED **" if ok else "** CLEAN FAILED **")
+            if not ok:
+                return 65
+        elif act in ("build", "analyze", "install", "docbuild"):
+            ok, data = build_with_retries(["build", "start"], a)
+            if ok and data.get("productPath"):
+                print(f"product: {data['productPath']}")
+            print("** BUILD SUCCEEDED **" if ok else "** BUILD FAILED **")
+            if not ok:
+                return 65
+        elif act == "test":
+            return test(a)
+        elif act == "build-for-testing":
+            return test(a, run=False)
+        elif act == "test-without-building":
+            return test(a, build=False)
+        elif act == "archive":
+            return archive(a)
+        else:
+            die(f"{act} is not supported on Linux", 64)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

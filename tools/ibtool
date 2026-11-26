@@ -43,7 +43,7 @@ SYSTEM_COLORS = {  # name -> built-in spec, preferred over document resources
     # synthesized table/clear colors (oracle: selectionStyle="none" cells)
     "tableCellPlainBackgroundColor": ("white", 1.0, 1.0),
     "clearColor": ("white", 0.0, 0.0),
-    "whiteColor": ("white", 1.0, 1.0),  # colorSpace="calibratedWhite" white 1 (dotnet new ios LaunchScreen)
+    "whiteColor": ("white", 1.0, 1.0),  # calibratedWhite white 1 (dotnet new ios LaunchScreen); opaque gamma 2.2 white (golden RDVTabBar LaunchScreen)
     "systemBackgroundColor": ("white", 1.0, 1.0),
     "labelColor": ("white", 0.0, 1.0),
     # not in document resources (gold Inspector tableView background)
@@ -354,6 +354,10 @@ def build_color_el(b, el, where, resources, named):
     if (el.get("white") == "0.0" and el.get("alpha") == "0.0"
             and el.get("customColorSpace") == "genericGamma22GrayColorSpace"):
         return build_color(b, "clearColor", where)
+    # opaque white in the gamma 2.2 gray space is UIColor.whiteColor (golden RDVTabBar LaunchScreen)
+    if (el.get("white") == "1" and el.get("alpha") == "1"
+            and el.get("customColorSpace") == "genericGamma22GrayColorSpace"):
+        return build_color(b, "whiteColor", where)
     if el.get("red") is not None:
         return build_rgb_color(b, el, where)
     if el.get("white") is not None and el.get("customColorSpace") == "calibratedWhite":
@@ -508,7 +512,8 @@ ALLOWED_ATTRS = {
               "userLabel",
               # React Native's template LaunchScreen labels
               "clipsSubviews", "minimumFontSize"},
-    "placeholder": {"placeholderIdentifier", "id", "userLabel", "customClass"},
+    "placeholder": {"placeholderIdentifier", "id", "userLabel", "customClass", "customModule",
+                    "customModuleProvider"},
     "tableViewCell": {"clipsSubviews", "contentMode",
                       "preservesSuperviewLayoutMargins", "selectionStyle",
                       "accessoryType", "indentationWidth", "reuseIdentifier",
@@ -1197,7 +1202,8 @@ def _parse_color_resources(doc, path):
 
 def _compile_xib_objects_element(doc, path):
     """The <objects> element of an iOS xib; refuse anything else."""
-    if doc.get("targetRuntime") != "iOS.CocoaTouch":
+    # iOS.CocoaTouch.iPad: an iPad-only document from before universal storyboards; same objects, same output
+    if doc.get("targetRuntime") not in ("iOS.CocoaTouch", "iOS.CocoaTouch.iPad"):
         raise XibError(f"{path}: targetRuntime {doc.get('targetRuntime')!r} is not iOS.CocoaTouch")
     objects = doc.find("objects")
     if objects is None:
@@ -1403,7 +1409,8 @@ def finalize(b, root):
     return N.encode(arch)
 
 
-SELF_TEST_NIBS = ("TinyView", "TinyLabel", "SettingsTableViewCell", "SettingsComboTableViewCell")
+SELF_TEST_NIBS = ("TinyView", "TinyLabel", "SettingsTableViewCell", "SettingsComboTableViewCell",
+                  "ChartsDemo/OwnerModule")
 
 
 def _bplist_bytes(plist, alias_entry_key=False):
@@ -4848,7 +4855,8 @@ def compile_storyboard(path, compilation_dir):
     is localized; the shipped app's bundle-root Settings/Inspector are not)."""
     tree = ET.parse(path)
     doc = tree.getroot()
-    if doc.get("targetRuntime") != "iOS.CocoaTouch":
+    # iOS.CocoaTouch.iPad: an iPad-only document from before universal storyboards; same objects, same output
+    if doc.get("targetRuntime") not in ("iOS.CocoaTouch", "iOS.CocoaTouch.iPad"):
         raise XibError(f"{path}: targetRuntime {doc.get('targetRuntime')!r} is not iOS.CocoaTouch")
     name = os.path.splitext(os.path.basename(path))[0]
     global LOCALIZE
@@ -5116,6 +5124,16 @@ SB_SELF_TEST = (
     ("MAUI HelloMaui MauiSplash.storyboardc",
      "HelloMaui/MauiSplash.storyboard",
      "HelloMaui/MauiSplash.storyboardc"),
+    # Shimmer's example (facebookarchive/Shimmer, BSD): an iPad-only document from Xcode 5
+    # (targetRuntime iOS.CocoaTouch.iPad). Golden from Xcode 27.2 (27B52).
+    # RDVTabBarController's example (MIT): an opaque white in the gamma 2.2 gray space (UIColor.whiteColor).
+    # Golden from Xcode 27.2 (27B52).
+    ("RDVTabBar LaunchScreen.storyboardc",
+     "RDVTabBar/Base.lproj/LaunchScreen.storyboard",
+     "RDVTabBar/Base.lproj/LaunchScreen.storyboardc"),
+    ("Shimmer Logo Main_iPad.storyboardc",
+     "ShimmerLogo/Base.lproj/Main_iPad.storyboard",
+     "ShimmerLogo/Base.lproj/Main_iPad.storyboardc"),
 )
 # (label, source, golden nib, --minimum-deployment-target): one scene nib that
 # Apple's ibtool writes differently below iOS 17 (tests/ibtool/golden-pre17,
@@ -5159,8 +5177,8 @@ def self_test():
         src = os.path.join(SRC, f"{name}.xib")
         if not os.path.isfile(src):
             src = os.path.join(SRC, "NetNewsWire", f"{name}.xib")
-        # The NNW goldens were compiled with --module NetNewsWire, as Xcode does.
-        TARGET_MODULE = "NetNewsWire" if "/NetNewsWire/" in src else None
+        # The NNW goldens were compiled with --module NetNewsWire, as Xcode does; Module/Name: --module Module.
+        TARGET_MODULE = "NetNewsWire" if "/NetNewsWire/" in src else name.split("/")[0] if "/" in name else None
         out = compile_xib(src)
         want = open(os.path.join(GOLDEN, f"{name}.nib"), "rb").read()
         if out != want:
@@ -5310,6 +5328,23 @@ def _main_comp_dir(argv):
     return None
 
 
+def _fallback(argv, err):
+    """What this compiler refuses goes to sweetpad's ibtool when Swift Build is installed (swiftbuild/install.sh):
+    broader, and its nibs load in UIKit, but they are not byte-identical to Apple's. OAD_IBTOOL_STRICT=1: refuse."""
+    if os.environ.get("OAD_IBTOOL_STRICT") == "1":
+        return None
+    root = os.environ.get("OAD_SWIFTBUILD_DIR") or os.path.join(
+        os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share"), "omarchy-apple-dev/swiftbuild")
+    sp = os.path.join(root, "current/sweetpad")
+    if not os.access(sp, os.X_OK):
+        return None
+    print(f"warning: ibtool: {err}; compiled with sweetpad's ibtool instead (loads in UIKit, not byte-identical "
+          f"to Apple's ibtool)", file=sys.stderr)
+    import subprocess
+    # sweetpad is one binary for its tools: it acts as the one argv[0] names
+    return subprocess.run(["ibtool"] + argv, executable=os.path.realpath(sp)).returncode
+
+
 def _main_compile_storyboard(positional, argv):
     """CompileStoryboard: ibtool [flags] IN.storyboard --compilation-directory DIR."""
     if len(positional) != 1 or not _main_comp_dir(argv):
@@ -5319,6 +5354,9 @@ def _main_compile_storyboard(positional, argv):
     try:
         sbc = compile_storyboard(positional[0], _main_comp_dir(argv))
     except (XibError, ET.ParseError) as e:
+        rc = _fallback(argv, e)
+        if rc is not None:
+            return rc
         print(f"error: ibtool: {e}", file=sys.stderr)
         return 1
     _main_partial_plist(argv)
@@ -5335,6 +5373,9 @@ def _main_compile(action_args, argv):
     try:
         data = compile_xib(xib)
     except (XibError, ET.ParseError) as e:
+        rc = _fallback(argv, e)
+        if rc is not None:
+            return rc
         print(f"error: ibtool: {e}", file=sys.stderr)
         return 1
     _main_partial_plist(argv)
@@ -5367,7 +5408,9 @@ def main(argv):
     flags_with_value, known_flags = _main_flags(argv)
     parsed = _main_parse(argv, flags_with_value, known_flags)
     if parsed is None:
-        return 2
+        # an option this compiler does not implement (--companion-strings-file: a localized storyboard's strings)
+        rc = _fallback(argv, "an option it does not handle")
+        return 2 if rc is None else rc
     action, action_args, positional = parsed
     if positional and not action:
         return _main_compile_storyboard(positional, argv)
