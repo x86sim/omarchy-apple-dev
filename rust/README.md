@@ -9,6 +9,7 @@ Xcode lays one out. No Mac, no Xcode install, no `xcodebuild`.
 | Plain Rust (UIKit through objc2) | runs on an x86Sim phone, snapshot + tap checked | `samples/hello-uikit` |
 | Tauri 2 (tao + WKWebView) | runs on an x86Sim phone, snapshot + tap (a Rust command) checked | `samples/tauri-hello` |
 | Dioxus 0.7 mobile (tao + WKWebView) | runs on an x86Sim phone, snapshot + tap checked | `samples/dioxus-hello` |
+| Bevy 0.20 (winit 0.30 + wgpu on Metal) | runs on an x86Sim phone, text read by OCR + tap checked | `samples/bevy-hello` |
 
 ## Setup
 
@@ -121,6 +122,19 @@ channel) for builds without `dx`.
 
 Not covered: `asset!()` files. `dx` collects them into the bundle; `build.py` copies only `resources` (default
 `assets/`), so an app that uses `asset!()` needs `dx bundle` for now.
+
+## Bevy
+
+A Bevy app is a binary crate (`fn main` with `App::new()...run()`): `rust/build.py <crate dir>` builds it. Bevy 0.20
+uses winit 0.30, which has no scene support: `build.py` links the scene adapter (above). `assets/` is copied into the
+`.app`, where Bevy's asset server looks on iOS.
+
+- Ask for the whole screen: winit on iOS takes the requested window size as the window's frame, and Bevy's default
+  is 1280x720 points (the UI then lies partly off screen):
+  `Window { mode: WindowMode::BorderlessFullscreen(MonitorSelection::Primary), ..default() }`.
+- A debug build of Bevy is slow; `[profile.dev.package."*"] opt-level = 2` (as the sample) keeps it usable. The first
+  build compiles a few hundred crates; the sample keeps it down with `default-features = false` and the UI features
+  only.
 
 ## Devices
 

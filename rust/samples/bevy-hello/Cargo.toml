@@ -1,0 +1,22 @@
+[package]
+name = "bevy-hello"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[package.metadata.ios]
+bundle-id = "dev.omarchy.rust.BevyHello"
+display-name = "Bevy Hello"
+info-plist = { UIStatusBarHidden = true }
+
+[dependencies]
+# UI and text on winit + wgpu (Metal); no audio, gamepads, 3D or scenes, to keep the build small
+bevy = { version = "0.20", default-features = false, features = [
+    "std", "default_app", "ui_api", "ui_bevy_render", "bevy_winit", "default_font", "multi_threaded",
+] }
+
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 2
