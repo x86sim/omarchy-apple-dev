@@ -371,17 +371,38 @@ survive_status() {
 # the narrow ABI for every other binary on the system.
 CURSES_COMPAT_DIR="${CURSES_COMPAT_DIR:-$HOME/.local/lib/curses-narrow-compat}"
 
+# Library directories searched for the curses libraries (x86Sim #35). A
+# narrow soname the dynamic loader cannot find is aliased too: NixOS's
+# appimage-run FHS has /usr/lib64/libncurses.so.6, but its ld.so.cache does not
+# list it and Nix's glibc has no default search directories, so the toolchain
+# failed exactly as on Arch while "no wide twin" was found.
+CURSES_LIB_DIRS="${CURSES_LIB_DIRS:-/usr/lib /usr/lib64 /usr/lib/x86_64-linux-gnu /lib64 /lib /lib/x86_64-linux-gnu}"
+
+curses_find() {   # first directory of CURSES_LIB_DIRS holding $1
+  for d in $CURSES_LIB_DIRS; do
+    if [ -e "$d/$1" ]; then echo "$d/$1"; return 0; fi
+  done
+  return 1
+}
+
 curses_compat() {
   mkdir -p "$CURSES_COMPAT_DIR"
   echo "== curses compat aliases in $CURSES_COMPAT_DIR =="
   linked=0
+  cache=$(ldconfig -p 2>/dev/null || true)
   for stem in ncurses form panel menu tinfo; do
     narrow="lib${stem}.so.6"
-    wide="/usr/lib/lib${stem}w.so.6"
-    [ -e "/usr/lib/$narrow" ] && continue   # host ships the narrow name already
-    [ -e "$wide" ] || continue              # no wide twin to alias
-    ln -sfn "$wide" "$CURSES_COMPAT_DIR/$narrow"
-    echo "  $narrow -> $wide"
+    if have=$(curses_find "$narrow"); then
+      # the host ships the narrow name: nothing to do when the loader finds it
+      if printf '%s\n' "$cache" | grep -q "^[[:space:]]*$narrow "; then continue; fi
+      target=$have
+    elif target=$(curses_find "lib${stem}w.so.6"); then
+      :
+    else
+      continue                              # no wide twin to alias
+    fi
+    ln -sfn "$target" "$CURSES_COMPAT_DIR/$narrow"
+    echo "  $narrow -> $target"
     linked=$((linked + 1))
   done
   if [ "$linked" -eq 0 ]; then echo "  nothing to alias (host already complete)"; fi
