@@ -41,7 +41,7 @@ Swift 6.4.2, SDK 27.2).
 | Localized storyboards (`--companion-strings-file`) | sweetpad's ibtool | EspBlufi |
 | App Intents | metadata when the Linux processor handles them; else built without it (said) | NextSunnyDay (`AppIntentsPackage`), Cronica (phrase parameters) |
 | Unit tests (XCTest, Swift Testing) | `xcodebuild test` / fastlane scan run them on a phone | clean-architecture-swiftui: 76 tests, per-test results |
-| UI-test targets | not yet: need Xcode's XCTRunner.app, which xtool's SDK does not carry | Cronica |
+| UI-test targets (XCUITest) | built (the `<Target>-Runner.app` from the SDK's XCTRunner.app); `xcodebuild test` runs them on a phone, every simulator platform | x86Sim's XCTestDemo: iOS, tvOS, watchOS, visionOS |
 | Archive (`xcodebuild archive`, fastlane gym) | unsigned archive; `-exportArchive` through sweetpad | NextSunnyDay, clean-architecture-swiftui |
 
 ## App shells and game engines
@@ -205,7 +205,6 @@ tools/xcbuild.py, which runs them on phones today.
 - **App Intents metadata**: `AppIntentsPackage` registration, `\(\.$param)` phrases with non-entity parameters,
   string/property queries.
 - **Schemes Xcode would generate**: without shared schemes, the app's scheme has no test action here.
-- **UI tests**: XCTRunner.app.
 - **Vendored binaries without an arm64-simulator slice** (EspBlufi's OpenSSL: x86_64 simulator only) cannot run on
   arm64 simulators, Apple's included; not a Linux gap.
 - **Deployment targets below the SDK's range** stop Xcode 27 as they stop Swift Build; the stand-in raises them (said).
