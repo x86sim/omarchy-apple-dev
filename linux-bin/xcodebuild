@@ -189,43 +189,8 @@ def destination(a):
     return GENERIC[sdk_of(a)]
 
 
-def scheme_coverage(a):
-    """The scheme's TestAction codeCoverageEnabled (Xcode's "Gather coverage"), from its .xcscheme: shared schemes of
-    the project, or of the workspace and the projects it lists"""
-    name = a.opts.get("-scheme")
-    if not name:
-        return False
-    kind, path = container(a)
-    dirs = [path] if path else []
-    for f in project_files(a):
-        if f.endswith("project.pbxproj"):
-            dirs.append(os.path.dirname(f))
-    for d in dirs:
-        for f in glob.glob(os.path.join(d, "xcshareddata", "xcschemes", name + ".xcscheme")) + \
-                glob.glob(os.path.join(d, "xcuserdata", "*.xcuserdatad", "xcschemes", name + ".xcscheme")):
-            try:
-                text = open(f, encoding="utf-8").read()
-            except OSError:
-                continue
-            m = re.search(r"<TestAction\b[^>]*>", text, re.S)
-            return bool(m and re.search(r'codeCoverageEnabled\s*=\s*"YES"', m.group(0)))
-    return False
-
-
-def coverage_on(a):
-    """-enableCodeCoverage YES / NO, else what the scheme says (xcodebuild test follows the scheme)"""
-    v = a.opts.get("-enableCodeCoverage")
-    if v is not None:
-        return v.upper() in ("YES", "TRUE", "1")
-    return bool(a.actions and any(x in ("test", "build-for-testing", "test-without-building") for x in a.actions)
-                and scheme_coverage(a))
-
-
 def passthrough_settings(a):
     out = list(a.settings)
-    # code coverage, as Xcode builds for it: instrumented Swift / C code (Swift Build's CLANG_COVERAGE_MAPPING)
-    if coverage_on(a) and not any(x.startswith("CLANG_COVERAGE_MAPPING=") for x in out):
-        out.append("CLANG_COVERAGE_MAPPING=YES")
     # x86Sim phones are arm64: a generic simulator build would also make an x86_64 slice nobody runs
     if sdk_of(a).endswith("simulator") and not any(x.startswith("ARCHS=") or x.startswith("ARCHS[") for x in out):
         out.append("ARCHS=arm64")
@@ -234,11 +199,6 @@ def passthrough_settings(a):
     oam = os.path.join(sdk_bundle(), "OpenAppleMacrosServer")
     if os.access(oam, os.X_OK) and not any(x.startswith("OTHER_SWIFT_FLAGS=") for x in out):
         out.append(f"OTHER_SWIFT_FLAGS=-load-plugin-executable {oam}#SwiftUIMacros $(inherited)")
-    # Xcode's previews engine (XOJIT): Swift Build then builds a Debug app's code into <Name>.debug.dylib loaded by a
-    # stub executable, as Xcode 27 does; sweetpad asks for the older dynamic-replacement previews (ENABLE_PREVIEWS),
-    # which leave the app in one binary. Swift Build turns both off for optimized builds and archives.
-    if not any(x.split("=", 1)[0].split("[", 1)[0] in ("ENABLE_PREVIEWS", "ENABLE_XOJIT_PREVIEWS") for x in out):
-        out += ["ENABLE_XOJIT_PREVIEWS=YES", "ENABLE_PREVIEWS=NO"]
     for k in ("-xcconfig",):
         if a.opts.get(k):
             out += [k, a.opts[k]]
@@ -549,133 +509,15 @@ def newest_xctestrun(a):
     return max(runs, key=os.path.getmtime) if runs else None
 
 
-def sweetpad_settings(a, target=None):
-    """Resolved build settings (sweetpad settings show): {target name: settings} for the scheme, or for one target"""
-    kind, path = container(a)
-    full = [sweetpad(), "-o", "json", "settings", "show"]
-    if kind:
-        full += [kind, path]
-    if target:
-        full += ["--target", target]
-    for o, f in (("-scheme", "--scheme"), ("-configuration", "--configuration")):
-        if a.opts.get(o):
-            full += [f, a.opts[o]]
-    full += ["--destination", destination(a), "--"] + passthrough_settings(a)
-    r = subprocess.run(full, capture_output=True, text=True, env=build_env())
-    try:
-        ts = json.loads(r.stdout)["data"]["targets"]
-    except (ValueError, KeyError, TypeError):
-        return {}
-    return {t.get("target") or t.get("name") or (t.get("settings") or {}).get("TARGET_NAME", ""): t.get("settings") or {}
-            for t in ts}
-
-
-# the simulators sweetpad writes no .xctestrun for (its generator knows iPhoneSimulator only): SDK -> platform dir
-OTHER_SIMULATORS = {"appletvsimulator": "AppleTVSimulator", "watchsimulator": "WatchSimulator",
-                    "xrsimulator": "XRSimulator"}
-SIM_PLATFORM_DIR = dict(OTHER_SIMULATORS, iphonesimulator="iPhoneSimulator")
-
-
-def write_xctestrun(a):
-    """The .xctestrun Xcode's build-for-testing writes, for a tvOS / watchOS / visionOS simulator build (sweetpad's
-    generator is iOS-only), in the shape sweetpad writes for iOS. The test targets are the .xctest bundles the build
-    made: next to the apps (logic tests: Xcode's xctest tool hosts them), in an app's PlugIns (hosted unit tests) or
-    in a <Target>-Runner.app's PlugIns (UI tests, which drive their TEST_TARGET_NAME's app). Returns its path."""
-    plat = OTHER_SIMULATORS[sdk_of(a)]
-    scheme = sweetpad_settings(a)
-    st = next(iter(scheme.values()), {})
-    built, cfg, eff = st.get("BUILT_PRODUCTS_DIR"), st.get("CONFIGURATION", "Debug"), st.get("EFFECTIVE_PLATFORM_NAME", "")
-    if not built or not os.path.isdir(built):
-        return None
-    root = os.path.dirname(built)
-    sub = os.path.basename(built)
-    T = "__TESTROOT__/" + sub
-    pf = f"__PLATFORMS__/{plat}.platform/Developer"
-    env = {"DYLD_FRAMEWORK_PATH": f"{T}:{T}/PackageFrameworks:{pf}/Library/Frameworks",
-           "DYLD_LIBRARY_PATH": f"{T}:{pf}/usr/lib", "XCODE_SCHEME_NAME": a.opts.get("-scheme", ""),
-           "__XCODE_BUILT_PRODUCTS_DIR_PATHS": T, "__XPC_DYLD_FRAMEWORK_PATH": T, "__XPC_DYLD_LIBRARY_PATH": T}
-    app_env = {"DYLD_FRAMEWORK_PATH": T, "DYLD_LIBRARY_PATH": T, "XCODE_SCHEME_NAME": env["XCODE_SCHEME_NAME"],
-               "__XCODE_BUILT_PRODUCTS_DIR_PATHS": T, "__XPC_DYLD_FRAMEWORK_PATH": T, "__XPC_DYLD_LIBRARY_PATH": T}
-
-    def bundle_id(app):
-        try:
-            with open(os.path.join(built, app, "Info.plist"), "rb") as f:
-                return plistlib.load(f).get("CFBundleIdentifier", "")
-        except (OSError, plistlib.InvalidFileException):
-            return ""
-
-    apps = sorted(f for f in os.listdir(built) if f.endswith(".app"))
-    plain = [x for x in apps if not x.endswith("-Runner.app")]
-    targets = []
-    for f in sorted(os.listdir(built)):
-        if f.endswith(".xctest"):
-            name = f[:-7]
-            targets.append({"BlueprintName": name, "DependentProductPaths": [f"{T}/{f}"],
-                            "TestBundlePath": f"{T}/{f}", "TestHostPath": f"{pf}/Library/Xcode/Agents/xctest",
-                            "TestingEnvironmentVariables": dict(env, DYLD_INSERT_LIBRARIES="/usr/lib/libRPAC.dylib")})
-    for app in apps:
-        plugins = os.path.join(built, app, "PlugIns")
-        for f in sorted(os.listdir(plugins)) if os.path.isdir(plugins) else []:
-            if not f.endswith(".xctest"):
-                continue
-            name = f[:-7]
-            t = {"BlueprintName": name, "TestBundlePath": f"__TESTHOST__/PlugIns/{f}", "TestHostPath": f"{T}/{app}",
-                 "TestHostBundleIdentifier": bundle_id(app)}
-            if app.endswith("-Runner.app"):
-                ts = sweetpad_settings(a, name).get(name, {})
-                ui = ts.get("TEST_TARGET_NAME")
-                uiapp = (sweetpad_settings(a, ui).get(ui, {}).get("FULL_PRODUCT_NAME") if ui else None) or \
-                    (plain[0] if len(plain) == 1 else None)
-                if not uiapp:
-                    say(f"xcodebuild: {name}: no app under test (TEST_TARGET_NAME) found; it is left out of the .xctestrun")
-                    continue
-                t.update({"IsUITestBundle": True, "IsXCTRunnerHostedTestBundle": True,
-                          "DependentProductPaths": [f"{T}/{uiapp}", f"{T}/{app}", f"{T}/{app}/PlugIns/{f}"],
-                          "TestingEnvironmentVariables": dict(env), "UITargetAppPath": f"{T}/{uiapp}",
-                          "UITargetAppCommandLineArguments": [], "UITargetAppEnvironmentVariables": dict(app_env)})
-            else:
-                t.update({"IsAppHostedTestBundle": True, "DependentProductPaths": [f"{T}/{app}", f"{T}/{app}/PlugIns/{f}"],
-                          "TestingEnvironmentVariables": dict(env, XCInjectBundleInto="unused", DYLD_INSERT_LIBRARIES=
-                                                              "__TESTHOST__/Frameworks/libXCTestBundleInject.dylib:/usr/lib/libRPAC.dylib")})
-            targets.append(t)
-    if not targets:
-        return None
-    for t in targets:
-        t.update({"CommandLineArguments": [], "EnvironmentVariables": {}, "ProductModuleName": t["BlueprintName"],
-                  "SystemAttachmentLifetime": "deleteOnSuccess", "UserAttachmentLifetime": "deleteOnSuccess"})
-    kind, path = container(a)
-    cname = os.path.splitext(os.path.basename((path or "").rstrip("/")))[0]
-    run = {"ContainerInfo": {"ContainerName": cname, "SchemeName": a.opts.get("-scheme", "")},
-           "TestConfigurations": [{"IsEnabled": True, "Name": cfg, "TestTargets": targets}],
-           "__xctestrun_metadata__": {"FormatVersion": 2, "SweetPadProductsRoot": root,
-                                      "SweetPadSourceRoot": os.path.dirname(os.path.abspath(path or "."))}}
-    out = os.path.join(root, f"{a.opts.get('-scheme') or cname}-{cfg}{eff}.xctestrun")
-    with open(out, "wb") as f:
-        plistlib.dump(run, f)
-    return out
-
-
 def test(a, run=True, build=True):
     """build-for-testing (sweetpad test build: the .xctestrun), then the tests on an x86Sim phone"""
     xctestrun = a.opts.get("-xctestrun")
     if build:
         ok, data = build_with_retries(["test", "build"], a)
         if not ok:
-            # UI-test targets are copies of Xcode's XCTRunner.app: SDKs built before install-toolchain.sh kept it lack it
-            plat = SIM_PLATFORM_DIR.get(sdk_of(a))
-            if plat and not os.path.isdir(os.path.join(sdk_bundle(), "Developer/Platforms", f"{plat}.platform",
-                                                       "Developer/Library/Xcode/Agents/XCTRunner.app")):
-                say(f"xcodebuild: the Darwin SDK has no {plat}.platform/Developer/Library/Xcode/Agents/XCTRunner.app, "
-                    "which UI-test targets are made from: rebuild it from Xcode.xip (install-toolchain.sh with "
-                    "XCODE_XIP=..., or x86sim dev setup sdk --xip PATH)")
-            print("** TEST BUILD FAILED **")
+            print("** TEST BUILD FAILED **" if run else "** TEST BUILD FAILED **")
             return 65
-        xctestrun = data.get("xctestrunPath") or xctestrun
-        if not xctestrun and sdk_of(a) in OTHER_SIMULATORS:
-            xctestrun = write_xctestrun(a)
-            if xctestrun:
-                data.pop("xctestrunNote", None)
-        xctestrun = xctestrun or newest_xctestrun(a)
+        xctestrun = data.get("xctestrunPath") or xctestrun or newest_xctestrun(a)
         if data.get("xctestrunNote"):
             say(data["xctestrunNote"])
         if not run:
@@ -692,17 +534,10 @@ def test(a, run=True, build=True):
         cmd += ["--only-testing", t]
     for t in a.skip_testing:
         cmd += ["--skip-testing", t]
-    if coverage_on(a):
-        cmd.append("--coverage")
     if a.opts.get("-resultBundlePath"):
-        # an Xcode result bundle, as xcodebuild writes it (xcresulttool / xccov / CI tools read it); x86sim test's own
-        # output (logs, junit.xml, results.json, coverage/) next to it in <bundle>.x86sim/
-        rb = a.opts["-resultBundlePath"].rstrip("/")
-        if os.path.exists(rb):
-            die(f"{rb} already exists (xcodebuild refuses to write over a result bundle too)", 65)
-        side = rb + ".x86sim"
-        cmd += ["--result-bundle", rb, "--out", side, "--junit", os.path.join(side, "junit.xml"),
-                "--json", os.path.join(side, "results.json")]
+        rb = a.opts["-resultBundlePath"]
+        os.makedirs(rb, exist_ok=True)
+        cmd += ["--out", rb, "--junit", os.path.join(rb, "junit.xml"), "--json", os.path.join(rb, "results.json")]
     say("run: " + " ".join(shlex.quote(c) for c in cmd))
     r = subprocess.run(cmd)
     print("** TEST SUCCEEDED **" if r.returncode == 0 else "** TEST FAILED **")

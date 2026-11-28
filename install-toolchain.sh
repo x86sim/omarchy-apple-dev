@@ -111,12 +111,11 @@ fetch_commit() { # repo sha dir
 # unmerged). Fork tag omarchy-main-pin, head of joshuaswarren/xtool#4 (7cc56c3).
 # On top of that, x86sim/xtool branch omarchy-platforms adds tvOS, watchOS and visionOS:
 # the AppleTVOS/WatchOS/XROS platforms and triples in the SDK, per-platform packaging
-# and Info.plist keys matching Xcode 27, universal arm64_32+arm64 watchOS binaries,
-# tvOS development profiles, each platform's XCTRunner.app in the SDK (UI-test targets), and an
-# ld64.lld trampoline that drops the ELF -rpath=$ORIGIN SwiftPM adds to visionOS test bundles.
+# and Info.plist keys matching Xcode 27, universal arm64_32+arm64 watchOS binaries, and
+# tvOS development profiles.
 # Built from source with its Swift runtime libraries next to it ($ORIGIN only).
 XTOOL_REPO=https://github.com/x86sim/xtool
-XTOOL_SHA=275cc1a7d766b1079efc1a7a609674cd2f066b6b
+XTOOL_SHA=b0ab5384f5d33f0ac2c53cf230fc1b2f9fe14e0c
 # The SDK stamp that pin writes (SDKBuilder.currentSDKVersion: epoch, darwin-tools and OpenAppleMacros
 # versions). Change it together with XTOOL_SHA; tests/sdk-state/check.sh compares it with the pinned source.
 XTOOL_SDK_VERSION="epoch=6,darwinTools=1.1.0-x86sim.2,oam=1.4.1"
