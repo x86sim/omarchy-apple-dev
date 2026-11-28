@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Toolchain on upstream's latest
+
+- The SDK toolset is `x86sim/darwin-tools-linux-llvm` `v1.2.0-x86sim.1`: xtool-org's 1.2.0 (lld from the Swift
+  6.5.x LLVM, `lipo` in the toolset) with our arm64_32 chained fixups (`x86sim/llvm-project@71b333e`). The toolset
+  ships `llvm-lib` itself, so xtool no longer renames `libtool`. `tests/watchos-chained-fixups` still matches ld64
+  27106.1.
+- xtool pin 72d4b1a: xtool-org's main (the GSA login fix for accounts without 2FA, versioned builds not marked
+  dirty) merged into `omarchy-platforms`. SDK stamp `darwinTools=1.2.0-x86sim.1`, so the installer rebuilds the SDK.
+- AssetKit `ef657de`: joshuaswarren/AssetKit's main merged (its exact bytes-per-row fix was already ours; its test
+  is added).
+
 ### UI-test targets build on Linux
 
 - The Darwin SDK keeps each platform's `Developer/Library/Xcode/Agents/XCTRunner.app` from Xcode.xip (xtool pin

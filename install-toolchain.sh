@@ -114,12 +114,13 @@ fetch_commit() { # repo sha dir
 # and Info.plist keys matching Xcode 27, universal arm64_32+arm64 watchOS binaries,
 # tvOS development profiles, each platform's XCTRunner.app in the SDK (UI-test targets), and an
 # ld64.lld trampoline that drops the ELF -rpath=$ORIGIN SwiftPM adds to visionOS test bundles.
+# Merged with xtool-org/xtool main of 2026-11-25 (9f76637), on darwin-tools 1.2.0-x86sim.1.
 # Built from source with its Swift runtime libraries next to it ($ORIGIN only).
 XTOOL_REPO=https://github.com/x86sim/xtool
-XTOOL_SHA=275cc1a7d766b1079efc1a7a609674cd2f066b6b
+XTOOL_SHA=72d4b1a9173d622076254cf439f8d1412700391c
 # The SDK stamp that pin writes (SDKBuilder.currentSDKVersion: epoch, darwin-tools and OpenAppleMacros
 # versions). Change it together with XTOOL_SHA; tests/sdk-state/check.sh compares it with the pinned source.
-XTOOL_SDK_VERSION="epoch=6,darwinTools=1.1.0-x86sim.2,oam=1.4.1"
+XTOOL_SDK_VERSION="epoch=6,darwinTools=1.2.0-x86sim.1,oam=1.4.1"
 install_xtool() {
   local src="$HOME/.cache/omarchy-apple-dev/xtool-$XTOOL_SHA"
   local dest="$HOME/.local/lib/omarchy-apple-dev/xtool-$XTOOL_SHA"
