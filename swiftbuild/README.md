@@ -49,8 +49,11 @@ project into an xtool package (editing, SourceKit-LSP), not for building one.
   with the SDK minimum when no target of the project sets a higher one, and says so (`XCODEBUILD_STRICT=1`: stop).
 - **Schemes Xcode generates** (a project with no shared schemes): sweetpad's do not include the app's test target, so
   `xcodebuild test` finds no tests there; share the scheme in Xcode or use one that lists them.
-- **UI-test targets** need Xcode's XCTRunner.app, which xtool's SDK does not carry: a scheme with a UI-test target
-  fails build-for-testing. Unit tests (XCTest and Swift Testing) run.
+- **UI-test targets** are made from Xcode's `XCTRunner.app`, which the SDK keeps from Xcode.xip
+  (`<Platform>.platform/Developer/Library/Xcode/Agents`). An SDK built before that has none: build-for-testing fails
+  and the stand-in says to rebuild the SDK from the .xip.
+- **`.xctestrun` for tvOS, watchOS and visionOS**: sweetpad writes one for iOS simulator builds only, so the
+  stand-in writes it for the other simulators, in the same shape, from the test bundles the build made.
 - **Embedded static frameworks** (Sentry's static xcframework): Swift Build links a stub binary with clang and no
   `-fuse-ld`; `swiftbuild/bin/ld` sends that link to ld64.lld (the stand-in puts it first on PATH).
 - **Interface Builder files**: compiled by the fork's Linux `ibtool` (the SDK bundle's), which writes only what is

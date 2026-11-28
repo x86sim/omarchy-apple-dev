@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+### UI-test targets build on Linux
+
+- The Darwin SDK keeps each platform's `Developer/Library/Xcode/Agents/XCTRunner.app` from Xcode.xip (xtool pin
+  ac666cd). Swift Build makes every UI-test target's `<Target>-Runner.app` from it, as Xcode does, so a scheme with a
+  UI-test target builds for testing. An SDK built before has no runner: rebuild it from the .xip
+  (`XCODE_XIP=... install-toolchain.sh`), which the xcodebuild stand-in says when such a build fails.
+- `linux-bin/xcodebuild build-for-testing` / `test` write the `.xctestrun` for tvOS, watchOS and visionOS simulator
+  builds too (sweetpad's generator is iOS-only).
+- The SDK's `ld64.lld` trampoline drops `-rpath=$ORIGIN` (xtool pin 275cc1a): SwiftPM adds that ELF form when it
+  links a visionOS test bundle, and ld64.lld refused it, so `swift build --build-tests` failed for
+  `arm64-apple-xros-simulator`. Like the runner, it needs the SDK rebuilt from the .xip.
+- Debug builds use Xcode's previews engine (XOJIT): `linux-bin/xcodebuild` asks for `ENABLE_XOJIT_PREVIEWS=YES
+  ENABLE_PREVIEWS=NO` unless the command line names either, so a Debug app is a stub plus `<Name>.debug.dylib` and
+  `__preview.dylib`, as Xcode 27.2 builds it (checked on a Mac: Xcode splits even with `ENABLE_PREVIEWS = YES` in the
+  project, not with `ENABLE_PREVIEWS=YES` or `ENABLE_XOJIT_PREVIEWS=NO` on the command line). sweetpad's
+  dynamic-replacement previews left it in one binary, which also changed a UI test's timing.
+- `-enableCodeCoverage YES`, or a scheme whose test action gathers coverage, builds the products with
+  `CLANG_COVERAGE_MAPPING=YES` and runs `x86sim test --coverage` (coverage report in the result bundle directory).
+- `-resultBundlePath R.xcresult` gets an Xcode result bundle (x86Sim's writer: xcresulttool and xccov read it), with
+  `x86sim test`'s logs, junit.xml and results.json in `R.xcresult.x86sim/`; an existing path is refused, as by Xcode.
+- Checked with x86Sim's XCTestDemo (hosted unit, logic and UI tests): the Linux-built products give Apple's results
+  on iPhone, Apple TV, Apple Watch and Vision Pro.
+
 ### `tools/build-project`: one entry point for every project kind
 
 - `tools/build-project DIR [--kind K] [--platform ios|tvos|watchos|xros] [--simulator|--device] [--release]
