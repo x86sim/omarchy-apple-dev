@@ -36,6 +36,8 @@
   `CLANG_COVERAGE_MAPPING=YES` and runs `x86sim test --coverage` (coverage report in the result bundle directory).
 - `-resultBundlePath R.xcresult` gets an Xcode result bundle (x86Sim's writer: xcresulttool and xccov read it), with
   `x86sim test`'s logs, junit.xml and results.json in `R.xcresult.x86sim/`; an existing path is refused, as by Xcode.
+- `linux-bin/xcodebuild test` prints `** TEST SUCCEEDED **` / `** TEST FAILED **` once, as Xcode does: `x86sim test`'s
+  report already ends with it, so the stand-in adds its own only when `x86sim test` stopped before its report.
 - Checked with x86Sim's XCTestDemo (hosted unit, logic and UI tests): the Linux-built products give Apple's results
   on iPhone, Apple TV, Apple Watch and Vision Pro.
 

@@ -705,7 +705,9 @@ def test(a, run=True, build=True):
                 "--json", os.path.join(side, "results.json")]
     say("run: " + " ".join(shlex.quote(c) for c in cmd))
     r = subprocess.run(cmd)
-    print("** TEST SUCCEEDED **" if r.returncode == 0 else "** TEST FAILED **")
+    # x86sim test's report ends with xcodebuild's closing line (exit 0 / 1); say it only when it stopped before one
+    if r.returncode not in (0, 1):
+        print("** TEST FAILED **")
     return 0 if r.returncode == 0 else 65
 
 
