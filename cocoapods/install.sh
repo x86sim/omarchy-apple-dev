@@ -63,11 +63,14 @@ else
       echo "   $name $version"
     fi
   done
-  mkdir -p "$POD_HOME/bin"
-  sed -e "s|@POD_HOME@|$POD_HOME|g" -e "s|@FORK@|$fork|g" "$here/pod.in" >"$POD_HOME/bin/pod"
-  chmod +x "$POD_HOME/bin/pod"
   echo "$stamp" >"$POD_HOME/stamp"
 fi
+# The wrapper names this tree (linux.rb, node-linux.js): written on every run, so a re-run from a moved or another
+# checkout points it there (an installed CocoaPods kept the tree it was first installed from, which then went away).
+mkdir -p "$POD_HOME/bin"
+sed -e "s|@POD_HOME@|$POD_HOME|g" -e "s|@FORK@|$fork|g" "$here/pod.in" >"$POD_HOME/bin/pod.new"
+chmod +x "$POD_HOME/bin/pod.new"
+mv -f "$POD_HOME/bin/pod.new" "$POD_HOME/bin/pod"
 
 # The wrapper on PATH: ours (it names POD_HOME) or none at all
 mkdir -p "$POD_BIN"
