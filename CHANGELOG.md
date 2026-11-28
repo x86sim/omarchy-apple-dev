@@ -10,6 +10,9 @@
   27106.1.
 - xtool pin 72d4b1a: xtool-org's main (the GSA login fix for accounts without 2FA, versioned builds not marked
   dirty) merged into `omarchy-platforms`. SDK stamp `darwinTools=1.2.0-x86sim.1`, so the installer rebuilds the SDK.
+- xtool pin 0a2b5d0: the build server's SourceKit-LSP path proxy no longer hangs when the client disconnects (it
+  closes its copy of the child's stdout write end after spawn; reads run off the cooperative pool). The fix
+  (omarchy/pr-lsp-path-proxy c9539ae) had not reached `omarchy-platforms`.
 - AssetKit `ef657de`: joshuaswarren/AssetKit's main merged (its exact bytes-per-row fix was already ours; its test
   is added).
 

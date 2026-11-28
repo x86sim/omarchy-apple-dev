@@ -117,7 +117,7 @@ fetch_commit() { # repo sha dir
 # Merged with xtool-org/xtool main of 2026-11-25 (9f76637), on darwin-tools 1.2.0-x86sim.1.
 # Built from source with its Swift runtime libraries next to it ($ORIGIN only).
 XTOOL_REPO=https://github.com/x86sim/xtool
-XTOOL_SHA=72d4b1a9173d622076254cf439f8d1412700391c
+XTOOL_SHA=0a2b5d077d44daf97789573602e8858d2c0e9024
 # The SDK stamp that pin writes (SDKBuilder.currentSDKVersion: epoch, darwin-tools and OpenAppleMacros
 # versions). Change it together with XTOOL_SHA; tests/sdk-state/check.sh compares it with the pinned source.
 XTOOL_SDK_VERSION="epoch=6,darwinTools=1.2.0-x86sim.1,oam=1.4.1"
